@@ -1,0 +1,6 @@
+*.cs                   mime-type=text/x-csharp
+*.csproj               mime-type=application/x-csproj
+*.ico         binary   mime-type=image/x-icon
+*.resx                 mime-type=application/x-resourcesx
+*.png         binary   mime-type=image/png
+*.sln                  mime-type=application/x-sln
