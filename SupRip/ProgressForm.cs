@@ -15,10 +15,7 @@ namespace SupRip
 		public void SetProgressBarPosition(int p)
 		{
 			this.progressBar.Value = p;
-			this.numLabel.Text = p.ToString() + " / " + this.progressBar.Maximum;
-		}
-		private void ProgressForm_Load(object sender, EventArgs e)
-		{
+			this.numLabel.Text = p + " / " + this.progressBar.Maximum;
 		}
 		private void cancelButton_Click(object sender, EventArgs e)
 		{

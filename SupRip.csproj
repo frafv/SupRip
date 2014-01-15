@@ -102,34 +102,34 @@
     </EmbeddedResource>
   </ItemGroup>
   <ItemGroup>
-    <Content Include="Properties\Arial-Bold.font.txt">
+    <Content Include="Arial-Bold.font.txt">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="Properties\Arial.font.txt">
+    <Content Include="Arial.font.txt">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="Properties\Arial2.font.txt">
+    <Content Include="Arial2.font.txt">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="Properties\Arial3.font.txt">
+    <Content Include="Arial3.font.txt">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="Properties\Arial4.font.txt">
+    <Content Include="Arial4.font.txt">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="Properties\Calibri-Variant.font.txt">
+    <Content Include="Calibri-Variant.font.txt">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="Properties\easilyconfused.txt">
+    <Content Include="easilyconfused.txt">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="Properties\Geneva-Bold.font.txt">
+    <Content Include="Geneva-Bold.font.txt">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="Properties\Greek-Arial.font.txt">
+    <Content Include="Greek-Arial.font.txt">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="Properties\narrow.txt">
+    <Content Include="narrow.txt">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <None Include="Properties\App.ico" />

@@ -33,7 +33,8 @@ namespace SupRip
 		private ManualResetEvent stopEvent;
 		private ManualResetEvent finishedEvent;
 		public DelegateUpdateProgress updateProgressDelegate;
-		public string version = "1.16";
+		private string defaultTitle;
+		private string version;
 		private bool ignoreItalicChanges;
 		public MainForm()
 		{
@@ -47,32 +48,6 @@ namespace SupRip
 			this.bluePen = new Pen(new SolidBrush(Color.Blue));
 			this.greenPen = new Pen(new SolidBrush(Color.Green));
 			this.whitePen = new Pen(new SolidBrush(Color.White));
-			this.subtitlePictureBox.SizeMode = PictureBoxSizeMode.Zoom;
-			this.letterPictureBox.SizeMode = PictureBoxSizeMode.Zoom;
-			ToolTip toolTip = new ToolTip();
-			toolTip.AutoPopDelay = 20000;
-			toolTip.SetToolTip(this.nextButton, "Moves to the next subtitle image\n\nCtrl+N");
-			toolTip.SetToolTip(this.previousButton, "Moves to the previous subtitle image\n\nCtrl+P");
-			toolTip.SetToolTip(this.ocrButton, "Tries to scan the current image, and will prompt the user to identify any unknown character.\n\nCtrl+O");
-			toolTip.SetToolTip(this.minimumSpaceCharacterWidthTextBox, "Configures how big an empty space between two letters has to be to be counted as a space character.\nIf spaces are inserted where there shouldn't be any, increase this number.\nIf too many spaces are not detected, lower this number.");
-			toolTip.SetToolTip(this.charSplitTolerance, "Configures how eagerly the OCR function splits characters.\nIf too many characters (especially 'k') get split in the middle, increase this number.\nIf too many double characters get erroneously detected as a single one, lower this number.");
-			toolTip.SetToolTip(this.similarityTolerance, "Configures how similar two letters have to be so they are seen as equal.\nIf you have to manually enter too many letters, increase this number.\nIf there are some accidentially misidentified letters, lower this number.");
-			toolTip.SetToolTip(this.contrast, "Sets a contrast correction on the image. Helpful for some subtitles that have large gray zones, but slows down OCR if it is set to any other value than zero.");
-			toolTip.SetToolTip(this.autoProgress, "Automatically continues with the next subtitle if all characters in this one can be scanned. OCR will stop as soon as an unknown character is encountered.");
-			toolTip.SetToolTip(this.autoOCRButton, "Automatically scans all subtitles. Unknown characters will simply be skipped.");
-			toolTip.SetToolTip(this.loadButton, "Load a new subtitle file.");
-			toolTip.SetToolTip(this.saveButton, "Save the scanned SRT file as you can see it on the left to a file.");
-			toolTip.SetToolTip(this.convertDoubleApostrophes, "Automatically replaces double-apostrophes with a single quote sign.");
-			toolTip.SetToolTip(this.replaceHighCommas, "Automatically replaces comma signs that are pretty high up in their line with apostrophes.");
-			toolTip.SetToolTip(this.forcedOnly, "Only output forced subtitles.");
-			toolTip.SetToolTip(this.combineSubtitles, "Combines two subsequent subtitles with completely identical text so they only use one line in the SRT.");
-			toolTip.SetToolTip(this.ptsOffset, "The delay that should be applied to timestamps. For most subtitles it will be zero.");
-			this.nextButton.Enabled = false;
-			this.previousButton.Enabled = false;
-			this.autoOCRButton.Enabled = false;
-			this.ocrButton.Enabled = false;
-			this.letterOKButton.Enabled = false;
-			this.saveButton.Enabled = false;
 			this.initialized = false;
 			this.options = new AppOptions();
 			this.minimumSpaceCharacterWidthTextBox.Text = AppOptions.minimumSpaceCharacterWidth.ToString();
@@ -90,7 +65,11 @@ namespace SupRip
 				Enabled = true,
 				Interval = 100
 			}.Tick += new EventHandler(this.TimerEvent);
-			this.Text = "SupRip " + this.version;
+			defaultTitle = this.Text;
+			version = Application.ProductVersion;
+			if (version.EndsWith(".0")) version = version.Substring(0, version.Length - 2);
+			if (version.EndsWith(".0")) version = version.Substring(0, version.Length - 2);
+			this.Text = defaultTitle + " " + version;
 		}
 		private void SaveSettings()
 		{
@@ -151,7 +130,7 @@ namespace SupRip
 				this.UpdateTextBox();
 				this.totalPages.Text = "/ " + this.subfile.NumSubtitles;
 				this.UpdateBitmaps();
-				this.Text = "SupRip " + this.version + " - " + fileName.Substring(fileName.LastIndexOf('\\') + 1);
+				this.Text = defaultTitle + " " + version + " - " + fileName.Substring(fileName.LastIndexOf('\\') + 1);
 			}
 		}
 		private void MainForm_Load(object sender, EventArgs e)

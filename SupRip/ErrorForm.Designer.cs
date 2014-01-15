@@ -28,43 +28,34 @@
 		/// </summary>
 		private void InitializeComponent()
 		{
+			System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(ErrorForm));
 			this.okButton = new System.Windows.Forms.Button();
 			this.errorText = new System.Windows.Forms.TextBox();
 			this.SuspendLayout();
 			// 
 			// okButton
 			// 
+			resources.ApplyResources(this.okButton, "okButton");
 			this.okButton.DialogResult = System.Windows.Forms.DialogResult.Cancel;
-			this.okButton.Location = new System.Drawing.Point(396, 318);
 			this.okButton.Name = "okButton";
-			this.okButton.Size = new System.Drawing.Size(75, 23);
-			this.okButton.TabIndex = 0;
-			this.okButton.Text = "OK";
-			this.okButton.UseVisualStyleBackColor = true;
 			// 
 			// errorText
 			// 
-			this.errorText.Location = new System.Drawing.Point(13, 13);
-			this.errorText.Multiline = true;
+			resources.ApplyResources(this.errorText, "errorText");
 			this.errorText.Name = "errorText";
 			this.errorText.ReadOnly = true;
-			this.errorText.ScrollBars = System.Windows.Forms.ScrollBars.Both;
-			this.errorText.Size = new System.Drawing.Size(458, 299);
-			this.errorText.TabIndex = 1;
 			// 
 			// ErrorForm
 			// 
 			this.AcceptButton = this.okButton;
-			this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
+			resources.ApplyResources(this, "$this");
 			this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-			this.ClientSize = new System.Drawing.Size(483, 353);
 			this.ControlBox = false;
 			this.Controls.Add(this.errorText);
 			this.Controls.Add(this.okButton);
 			this.Name = "ErrorForm";
 			this.ShowIcon = false;
 			this.ShowInTaskbar = false;
-			this.Text = "Critical Error";
 			this.Load += new System.EventHandler(this.ErrorForm_Load);
 			this.ResumeLayout(false);
 			this.PerformLayout();
