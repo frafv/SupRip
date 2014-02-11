@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Windows.Forms;
@@ -35,11 +36,29 @@ namespace SupRip
 		public DelegateUpdateProgress updateProgressDelegate;
 		private string defaultTitle;
 		private string version;
-		private bool ignoreItalicChanges;
+
+		private void ReadOptions()
+		{
+			this.minimumSpaceCharacterWidthTextBox.Text = AppOptions.minimumSpaceCharacterWidth.ToString();
+			this.charSplitTolerance.Text = AppOptions.charSplitTolerance.ToString();
+			this.similarityTolerance.Text = AppOptions.similarityTolerance.ToString();
+			this.contrast.Text = AppOptions.contrast.ToString();
+			this.convertDoubleApostrophes.Checked = AppOptions.convertDoubleApostrophes;
+			this.stripFormatting.Checked = AppOptions.stripFormatting;
+			this.replaceHighCommas.Checked = AppOptions.replaceHighCommas;
+			this.forcedOnly.Checked = AppOptions.forcedOnly;
+			this.combineSubtitles.Checked = AppOptions.combineSubtitles;
+		}
+
 		public MainForm()
 		{
 			this.InitializeComponent();
-			this.debugButton.Hide();
+#if DEBUG
+			this.debugButton.Show();
+			this.dbgSpace.Show();
+			this.dbgEdges.Show();
+			this.debugLabel.Show();
+#endif
 			this.bitmapSize = new Size(400, 400);
 			this.bitmap = new Bitmap(this.bitmapSize.Width, this.bitmapSize.Height, PixelFormat.Format24bppRgb);
 			this.fonts = new SubtitleFonts();
@@ -50,15 +69,7 @@ namespace SupRip
 			this.whitePen = new Pen(new SolidBrush(Color.White));
 			this.initialized = false;
 			this.options = new AppOptions();
-			this.minimumSpaceCharacterWidthTextBox.Text = AppOptions.minimumSpaceCharacterWidth.ToString();
-			this.charSplitTolerance.Text = AppOptions.charSplitTolerance.ToString();
-			this.similarityTolerance.Text = AppOptions.similarityTolerance.ToString();
-			this.contrast.Text = AppOptions.contrast.ToString();
-			this.convertDoubleApostrophes.Checked = AppOptions.convertDoubleApostrophes;
-			this.stripFormatting.Checked = AppOptions.stripFormatting;
-			this.replaceHighCommas.Checked = AppOptions.replaceHighCommas;
-			this.forcedOnly.Checked = AppOptions.forcedOnly;
-			this.combineSubtitles.Checked = AppOptions.combineSubtitles;
+			ReadOptions();
 			this.initialized = true;
 			new System.Windows.Forms.Timer
 			{
@@ -70,6 +81,7 @@ namespace SupRip
 			if (version.EndsWith(".0")) version = version.Substring(0, version.Length - 2);
 			if (version.EndsWith(".0")) version = version.Substring(0, version.Length - 2);
 			this.Text = defaultTitle + " " + version;
+			this.cbFonts.Items.AddRange(this.fonts.FontList());
 		}
 		private void SaveSettings()
 		{
@@ -157,6 +169,10 @@ namespace SupRip
 		private void MoveToImage(int num)
 		{
 			this.fontName.Text = this.fonts.DefaultFontName;
+			if (SubtitleImage.italicAngle.HasValue)
+			{
+				this.fontName.Text += String.Format(" (Italic = {0:0.0}°)", 90.0 - Math.Atan(SubtitleImage.italicAngle.Value) * 180.0 / Math.PI);
+			}
 			if (this.currentSubtitle != null && num != this.currentNum)
 			{
 				this.subfile.UpdateSubtitleText(this.currentNum, this.currentSubtitle);
@@ -205,6 +221,7 @@ namespace SupRip
 			{
 				this.letterInputBox.Focus();
 				base.AcceptButton = this.letterOKButton;
+				this.italicLetter.Checked = this.activeLetter.Angle != 0.0;
 				this.UpdateBitmaps();
 				return;
 			}
@@ -271,11 +288,7 @@ namespace SupRip
 				}
 			}
 		}
-		public void ImageOCR(int n)
-		{
-			this.ImageOCR(n, false);
-		}
-		public void ImageOCR(int n, bool reportUnknownCharacter)
+		public void ImageOCR(int n, bool reportUnknownCharacter = false)
 		{
 			SubtitleImage subtitleImage = this.subfile.GetSubtitleImage(n);
 			this.ImageOCR(subtitleImage, reportUnknownCharacter);
@@ -383,6 +396,8 @@ namespace SupRip
 			}
 			else
 			{
+				this.activeLetter.Angle = italicLetter.Checked ? (SubtitleImage.italicAngle ?? 1.0/6.0) : 0.0;
+				//this.activeLetter.ApplyAngle();
 				this.AssignLetterText(this.activeLetter, this.letterInputBox.Text);
 			}
 			this.letterInputBox.Text = "";
@@ -460,54 +475,29 @@ namespace SupRip
 							pen = this.redPen;
 						}
 					}
-					Rectangle coords = current.Coords;
-					if (current.Angle != 0.0)
-					{
-						int num = (int)(current.Angle * (double)coords.Height / 2.0);
-						int num2 = (int)((double)current.Height * current.Angle);
-						graphics.DrawPolygon(pen, new Point[]
-						{
-							new Point(coords.Left + num - num2, coords.Top),
-							new Point(coords.Right + num - num2, coords.Top),
-							new Point(coords.Right - num - num2, coords.Bottom),
-							new Point(coords.Left - num - num2, coords.Bottom)
-						});
-					}
-					else
-					{
-						graphics.DrawRectangle(pen, coords);
-					}
+					var coords = current.Coords;
+					graphics.DrawLine(pen, current.LeftTopPoint, current.LeftBottomPoint);
+					graphics.DrawLine(pen, current.RightTopPoint, current.RightBottomPoint);
+					graphics.DrawLine(pen, current.LeftTop, coords.Top - 1.0f, current.RightTop, coords.Top - 1.0f);
+					graphics.DrawLine(pen, current.LeftBottom, coords.Bottom, current.RightBottom, coords.Bottom);
 				}
 			}
-			if (this.currentSubtitle.debugLocations != null)
+#if DEBUG
+			if (this.currentSubtitle.debugPoints != null && this.dbgSpace.Checked)
 			{
-				foreach (KeyValuePair<int, Space> current2 in this.currentSubtitle.debugLocations)
+				foreach (PointF point1 in this.currentSubtitle.debugPoints)
 				{
-					if (current2.Value.Rect.Width == 0)
-					{
-						graphics.DrawLine(this.bluePen, current2.Value.Rect.X, current2.Value.Rect.Y, current2.Value.Rect.Right, current2.Value.Rect.Bottom);
-					}
-					else
-					{
-						if (current2.Value.Partial)
-						{
-							graphics.DrawRectangle(this.yellowPen, current2.Value.Rect);
-						}
-						else
-						{
-							graphics.DrawRectangle(this.bluePen, current2.Value.Rect);
-						}
-					}
+					graphics.FillRectangle(this.bluePen.Brush, point1.X, point1.Y, 1.0f, 1.0f);
 				}
 			}
-			if (this.currentSubtitle.debugPoints != null)
+			if (this.currentSubtitle.debugLines != null && this.dbgEdges.Checked)
 			{
-				foreach (Point current3 in this.currentSubtitle.debugPoints)
+				foreach (PointF[] line in this.currentSubtitle.debugLines)
 				{
-					Point pt = new Point(current3.X + 1, current3.Y);
-					graphics.DrawLine(this.redPen, current3, pt);
+					graphics.DrawLine(this.yellowPen, line[0], line[1]);
 				}
 			}
+#endif
 			double num3 = (double)this.subtitlePictureBox.Width / (double)bitmap.Width;
 			double num4 = (double)this.subtitlePictureBox.Height / (double)bitmap.Height;
 			this.bitmapScale = Math.Min(num3, num4);
@@ -623,21 +613,18 @@ namespace SupRip
 				}
 				if (subtitleLetter != null)
 				{
+#if DEBUG
+					this.debugLabel.Text = String.Format("Exact angle={0:0.00}° Coords={1}, {2}pix Size={3} x {4}pix",
+						subtitleLetter.ExactAngle.HasValue ? (object)(90.0 - Math.Atan(subtitleLetter.ExactAngle.Value) * 180.0 / Math.PI) : "none",
+						subtitleLetter.Coords.Left, subtitleLetter.Coords.Top,
+						subtitleLetter.Coords.Width, subtitleLetter.Coords.Height);
+#endif
 					this.activeLetter = subtitleLetter;
 					this.letterInputBox.Text = subtitleLetter.Text;
 					this.letterInputBox.SelectAll();
 					this.letterInputBox.Focus();
 					base.AcceptButton = this.letterOKButton;
-					this.ignoreItalicChanges = true;
-					if (this.activeLetter.Angle != 0.0)
-					{
-						this.italicLetter.Checked = true;
-					}
-					else
-					{
-						this.italicLetter.Checked = false;
-					}
-					this.ignoreItalicChanges = false;
+					this.italicLetter.Checked = this.activeLetter.Angle != 0.0;
 					this.UpdateBitmaps();
 					return;
 				}
@@ -764,15 +751,7 @@ namespace SupRip
 		private void resetDefaults_Click(object sender, EventArgs e)
 		{
 			this.options.ResetToDefaults();
-			this.minimumSpaceCharacterWidthTextBox.Text = AppOptions.minimumSpaceCharacterWidth.ToString();
-			this.charSplitTolerance.Text = AppOptions.charSplitTolerance.ToString();
-			this.similarityTolerance.Text = AppOptions.similarityTolerance.ToString();
-			this.contrast.Text = AppOptions.contrast.ToString();
-			this.convertDoubleApostrophes.Checked = AppOptions.convertDoubleApostrophes;
-			this.stripFormatting.Checked = AppOptions.stripFormatting;
-			this.replaceHighCommas.Checked = AppOptions.replaceHighCommas;
-			this.forcedOnly.Checked = AppOptions.forcedOnly;
-			this.combineSubtitles.Checked = AppOptions.combineSubtitles;
+			ReadOptions();
 		}
 		private void ptsOffset_TextChanged(object sender, EventArgs e)
 		{
@@ -833,17 +812,50 @@ namespace SupRip
 		{
 			this.ApplyOptions();
 		}
-		private void italicLetter_CheckedChanged(object sender, EventArgs e)
-		{
-			if (!this.ignoreItalicChanges)
-			{
-				this.activeLetter.Angle = 0.0;
-			}
-		}
 
 		private void MainForm_FormClosing(object sender, FormClosingEventArgs e)
 		{
 			this.SaveSettings();
+		}
+
+		private void cbFonts_SelectedIndexChanged(object sender, EventArgs e)
+		{
+			pictureBoxLetter.Image = null;
+			this.listLetters.BeginUpdate();
+			try
+			{
+				this.listLetters.Items.Clear();
+				string fontName = (string)cbFonts.SelectedItem;
+				if (!String.IsNullOrEmpty(fontName))
+					this.listLetters.Items.AddRange(this.fonts.FontLetters(fontName)
+						.OrderBy(letter => letter.Text, StringComparer.Ordinal).Select(letter => new ListViewItem(new string[] { letter.Text,
+							String.Format("{0}x{1}", letter.ImageWidth, letter.ImageHeight),
+							String.Join(" ", letter.Text.Select(c => ((int)c).ToString("X4")))})).ToArray());
+			}
+			finally
+			{
+				this.listLetters.EndUpdate();
+			}
+		}
+
+		private void listLetters_SelectedIndexChanged(object sender, EventArgs e)
+		{
+			pictureBoxLetter.Image = null;
+			var item = listLetters.SelectedItems.Cast<ListViewItem>().FirstOrDefault();
+			if (item == null)
+				return;
+			string letterText = (string)item.Text;
+			string fontName = (string)cbFonts.SelectedItem;
+			var letter = this.fonts.FontLetters(fontName).FirstOrDefault(l => l.Text == letterText);
+			if (letter == null)
+				return;
+			var bmp = letter.GetBitmap();
+			pictureBoxLetter.Image = bmp;
+		}
+
+		private void dbgSpace_CheckedChanged(object sender, EventArgs e)
+		{
+			UpdateBitmaps();
 		}
 	}
 }

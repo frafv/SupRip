@@ -2,97 +2,486 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Imaging;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
+
 namespace SupRip
 {
 	internal class SubtitleImage
 	{
-		private class EndOfImageReachedException : Exception
-		{
-		}
 		private class NoSubtitleTextException : Exception
 		{
 		}
+		/// <summary>
+		/// Text line
+		/// </summary>
 		private class TextLine
 		{
-			private int num;
-			private int start;
-			private int end;
-			public double angle;
+			/// <summary>
+			/// Text line number
+			/// </summary>
 			public int Num
 			{
-				get
-				{
-					return this.num;
-				}
-				set
-				{
-					this.num = value;
-				}
+				get;
+				set;
 			}
+			/// <summary>
+			/// Text line height in pixels
+			/// </summary>
 			public int Height
 			{
 				get
 				{
-					return this.end - this.start;
+					return this.End - this.Start;
 				}
 			}
+			/// <summary>
+			/// Text line Y start
+			/// </summary>
 			public int Start
 			{
-				get
-				{
-					return this.start;
-				}
-				set
-				{
-					this.start = value;
-				}
+				get;
+				set;
 			}
+			/// <summary>
+			/// Text line Y end
+			/// </summary>
 			public int End
 			{
-				get
-				{
-					return this.end;
-				}
-				set
-				{
-					this.end = value;
-				}
+				get;
+				set;
 			}
+
+#if DEBUG
+			public LinkedList<PointF> debugPoints = new LinkedList<PointF>();
+			public LinkedList<PointF[]> debugLines = new LinkedList<PointF[]>();
+#endif
+
+			/// <summary>
+			/// Text line - image block
+			/// </summary>
+			/// <param name="n">Number</param>
+			/// <param name="s">Y start</param>
+			/// <param name="e">Y end</param>
 			public TextLine(int n, int s, int e)
 			{
-				this.num = n;
-				this.start = s;
-				this.end = e;
+				this.Num = n;
+				this.Start = s;
+				this.End = e;
+			}
+
+			/// <summary>
+			/// Split image into text lines - image blocks
+			/// </summary>
+			/// <param name="workArray">Pixels bitmap</param>
+			/// <returns></returns>
+			internal static TextLine[] Find(int[,] nextArray)
+			{
+				var list = new List<TextLine>();
+				int columnHeight = nextArray.GetLength(0);
+				int lineWidth = nextArray.GetLength(1);
+				int line = 0;
+				int line1, line2;
+				for (int num = 0; line < columnHeight; num++)
+				{
+					while (line < columnHeight && nextArray[line, 0] == lineWidth)
+						line++;
+					line1 = line;
+					while (line < columnHeight && nextArray[line, 0] != lineWidth)
+						line++;
+					line2 = line;
+					if (line2 != line1)
+						list.Add(new SubtitleImage.TextLine(num, line1, line2));
+				}
+				TextLine textLine = null;
+				int i = 0;
+				while (i < list.Count)
+				{
+					if (list[i].Height < minLineHeight)
+					{
+						if (list.Count == 1)
+						{
+							throw new Exception("Could only find one line of text, and it's smaller than " + minLineHeight + " pixels");
+						}
+						if (i == 0)
+						{
+							list[1].Start = list[0].Start;
+						}
+						else
+						{
+							if (i == list.Count - 1)
+							{
+								textLine.End = list[i].End;
+							}
+							else
+							{
+								int prevSpace = list[i].Start - textLine.End;
+								int nextSpace = list[i + 1].Start - list[i].End;
+								if (prevSpace < minLineSpace || nextSpace / prevSpace > 2)
+								{
+									textLine.End = list[i].End;
+								}
+								else if (nextSpace < minLineSpace || prevSpace / nextSpace > 2)
+								{
+									list[i + 1].Start = list[i].Start;
+								}
+								else if (prevSpace < nextSpace)
+								{
+									textLine.End = list[i].End;
+								}
+								else
+								{
+									list[i + 1].Start = list[i].Start;
+								}
+							}
+						}
+						list.RemoveAt(i);
+					}
+					else
+					{
+						textLine = list[i];
+						i++;
+					}
+				}
+				return list.ToArray();
+			}
+
+			private static float GetNextLeft(byte[,] workArray, int[,] nextArray, int line, ref int left, byte pixelLevel1, byte pixelLevel2)
+			{
+				left = -nextArray[line, left];
+				if (left >= workArray.GetLength(1)) return left;
+				byte b1 = workArray[line, left];
+				byte b2 = workArray[line, left - 1];
+				if (b1 > pixelLevel1 && b2 > pixelLevel1)
+					return left - (float)(b1 - pixelLevel2) / (float)(b1 - b2);
+				else
+					return left - (float)(b1 - pixelLevel1) / (float)(b1 - b2);
+			}
+
+			private static float GetNextRight(byte[,] workArray, int[,] nextArray, int line, ref int right, byte pixelLevel1, byte pixelLevel2)
+			{
+				right = nextArray[line, right] - 1;
+				if (right >= workArray.GetLength(1) - 1) return right;
+				byte b1 = workArray[line, right];
+				byte b2 = workArray[line, right + 1];
+				if (b1 > pixelLevel1 && b2 > pixelLevel1)
+					return right + (float)(b1 - pixelLevel2) / (float)(b1 - b2);
+				else
+					return right + (float)(b1 - pixelLevel1) / (float)(b1 - b2);
+			}
+
+			internal Space[] FindSpaces(byte[,] workArray, int[,] nextArray, byte pixelLevel1, byte pixelLevel2)
+			{
+				var spaces = new LinkedList<Space>();
+				int lineHeight = this.Height;
+				int lineWidth = nextArray.GetLength(1);
+				int start = this.Start - 1;
+				spaces.AddLast(new Space(lineHeight + 1)).Value.SetRange(0, 0.0f, 0.0f);
+				spaces.AddLast(new Space(lineHeight + 1)).Value.SetRange(0, 0.0f, lineWidth - 1);
+				for (int i = 1; i <= lineHeight; i++)
+				{
+					var spaceNode = spaces.First;
+					spaceNode.Value.SetRange(i, 0.0f, 0.0f);
+					spaceNode = spaceNode.Next;
+					while (spaceNode != null)
+					{
+						var space = spaceNode.Value;
+						var spaceLeft = spaceNode.Previous.Value;
+						float left = space.Left[i - 1];
+						int ileft = (int)Math.Ceiling(left);
+						if (nextArray[i + start, ileft] > 0.0f)
+						{
+							//First space found at left
+							if (left - Space.smoothStep >= spaceLeft.Left[i] && nextArray[i + start, ileft - 1] > 0.0f)
+							{
+								left -= Space.smoothStep;
+								ileft = (int)Math.Ceiling(left);
+							}
+						}
+						else
+						{
+							//Find first space
+							left = GetNextLeft(workArray, nextArray, i + start, ref ileft, pixelLevel1, pixelLevel2);
+							//End of space
+							if (left >= space.Right[i - 1] + Space.smoothStep)
+							{
+								//Delete space
+								var old = spaceNode;
+								spaceNode = spaceNode.Next;
+								spaces.Remove(old);
+								if (spaces.First.Next == null)
+									return new Space[] { };
+								continue;
+							}
+							//Need left smooth
+							if (left > space.Left[i - 1] + Space.smoothStep)
+							{
+								space.LeftSmooth(left, i);
+							}
+						}
+						//Get Last space
+						int iright = ileft;
+						float right = GetNextRight(workArray, nextArray, i + start, ref iright, pixelLevel1, pixelLevel2);
+						//Space enough long
+						if (right >= space.Right[i - 1] - Space.smoothStep)
+						{
+							right = Math.Min(space.Right[i - 1] + Space.smoothStep, right);
+						}
+						else
+						{
+							//Next first space
+							int inextLeft = iright + 1;
+							float nextLeft = GetNextLeft(workArray, nextArray, i + start, ref inextLeft, pixelLevel1, pixelLevel2);
+							//Space need to split
+							if (nextLeft <= space.Right[i - 1])
+							{
+								var spaceRight = spaceNode.Next != null ? spaceNode.Next.Value : null;
+								//Check right space including
+								bool inRight = spaceRight != null && nextLeft >= spaceRight.Left[i - 1] && space.Right[i - 1] <= spaceRight.Right[i - 1];
+								//Check left space including
+								bool inLeft = left >= spaceLeft.Left[i] && right <= spaceLeft.Right[i];
+								//Split space
+								if (!inRight) //space not contains in right - else go to left
+								{
+									if (!inLeft) //space not contains in left and right - split
+									{
+										var add = new Space(lineHeight + 1);
+										space.CopyTo(add, 0, i);
+										spaces.AddAfter(spaceNode, add);
+										//Need left smooth new space
+										add.LeftSmooth(nextLeft, i);
+									}
+									else //space contains in left only - go to right
+									{
+										space.LeftSmooth(nextLeft, i);
+										continue;
+									}
+								}
+							}
+							//Need right smooth
+							space.RightSmooth(right, i);
+						}
+						space.SetRange(i, left, right);
+						spaceNode = spaceNode.Next;
+					}
+				}
+				return spaces.Skip(1).ToArray();
+			}
+
+			private IEnumerable<SubtitleLetter> FindLetter(Space space, Space next, byte[,] workArray, int[,] nextArray)
+			{
+				int lineWidth = nextArray.GetLength(1);
+				float spaceLeft = 0;
+				float spaceRight = lineWidth - 1;
+				float spaceWidth = lineWidth;
+				int letterLeft = lineWidth;
+				int letterRight = -1;
+				int start = -1;
+				int end = -1;
+
+				if (space == null && this.Num != 0)
+				{
+					Rectangle rectangle = new Rectangle(1, this.Start - 20, 10, 25);
+					yield return new SubtitleLetter(rectangle, "\r\n");
+				}
+				for (int line = 1; line <= this.Height; line++)
+				{
+					float left1 = space != null ? space.Left[line] : 0.0f;
+					int ileft1 = (int)Math.Ceiling(left1);
+					float right1 = space != null ? space.Right[line] : 0.0f;
+					int iright1 = (int)Math.Floor(right1);
+					float width1 = right1 - left1;
+					float left2 = next != null ? next.Left[line] : lineWidth;
+					int ileft2 = (int)Math.Ceiling(left2);
+					if (left1 > spaceLeft) spaceLeft = left1;
+					if (right1 < spaceRight) spaceRight = right1;
+					if (width1 < spaceWidth) spaceWidth = width1;
+					if (nextArray[line + this.Start - 1, ileft1] >= ileft2)
+						continue;
+					if (ileft2 > letterRight) letterRight = ileft2;
+					if (iright1 < letterLeft) letterLeft = iright1;
+					if (start < 0) start = line;
+					end = line;
+				}
+				if (spaceRight - spaceLeft >= AppOptions.charSplitTolerance && spaceWidth > (float)AppOptions.minimumSpaceCharacterWidth)
+				{
+					var rectangle = new RectangleF(spaceLeft, this.Start + 4, spaceRight - spaceLeft + 1.0f, this.Height - 10);
+					yield return new SubtitleLetter(rectangle, " ");
+				}
+				if (end > start)
+				{
+					Rectangle rectangle = new Rectangle(letterLeft + 1, start + this.Start - 1, letterRight - letterLeft - 1, end - start + 1);
+#if DEBUG
+					if (space != null)
+					{
+						float x1, x2; bool e;
+						SubtitleLetter.CalcAngle(space.Right.Skip(start).Take(rectangle.Height).ToArray(), true, out x1, out x2, out e);
+						lock (this.debugLines)
+						{
+							this.debugLines.AddLast(new PointF[]{new PointF(x1, rectangle.Top), new PointF(x2, rectangle.Bottom-1)});
+						}
+					}
+					if (next != null)
+					{
+						float x3, x4; bool e;
+						SubtitleLetter.CalcAngle(next.Left.Skip(start).Take(rectangle.Height).ToArray(), false, out x3, out x4, out e);
+						lock (this.debugLines)
+						{
+							this.debugLines.AddLast(new PointF[] { new PointF(x3, rectangle.Top), new PointF(x4, rectangle.Bottom - 1) });
+						}
+					}
+#endif
+					yield return SubtitleLetter.Extract(workArray, rectangle,
+						space != null ? space.Right.Skip(start).Take(rectangle.Height).ToArray() : null,
+						next != null ? next.Left.Skip(start).Take(rectangle.Height).ToArray() : null,
+						(rectangle.Top + rectangle.Bottom) - (this.End + this.Start) >> 1);
+				}
+			}
+
+			public SubtitleLetter[] FindLetters(byte[,] workArray, int[,] nextArray, byte pixelLevel1, byte pixelLevel2)
+			{
+				var spaces = FindSpaces(workArray, nextArray, pixelLevel1, pixelLevel2);
+#if DEBUG
+				foreach (var _p in spaces.SelectMany(_l => Enumerable.Range(1, _l.Height - 1).SelectMany(_k => new PointF[] {
+					new PointF(_l.Left[_k], _k + this.Start - 1), new PointF(_l.Right[_k], _k + this.Start - 1) })))
+					this.debugPoints.AddLast(_p);
+#endif
+				var list = ParallelEnumerable.Range(-1, spaces.Length + 1).AsOrdered().SelectMany(index =>
+					FindLetter(index >= 0 ? spaces[index] : null, index < spaces.Length - 1 ? spaces[index + 1] : null, workArray, nextArray)).ToList();
+				var first = this.Num != 0 && list.Count > 1 ? list[1] : list.FirstOrDefault();
+				var last = list.LastOrDefault();
+				if (first != null && first.Text == " ") list.Remove(first);
+				if (last != null && last.Text == " ") list.RemoveAt(list.Count - 1);
+				var letters = list.ToArray();
+				AdjustItalic(letters);
+				return letters;
+			}
+
+			private double? GetItalicAngle(SubtitleLetter[] letters)
+			{
+				if (SubtitleImage.italicAngle.HasValue)
+					return SubtitleImage.italicAngle;
+
+				var angles = letters.Where(letter => letter.ExactAngle.HasValue).Select(letter => letter.ExactAngle.Value).OrderBy(angle => angle).ToArray();
+				int k = 0;
+				double delta = 1.0 / SubtitleLetter.minAngleDiv;
+				double maxAngle = 0.0;
+				int maxCount = 0;
+				while (k < angles.Length)
+				{
+					double start = angles[k];
+					double end = start + delta;
+					int count = 1 + angles.Skip(k + 1).TakeWhile(angle => angle <= end).Count();
+					double sum = angles.Skip(k).Take(count).Sum();
+					end = angles[k + count - 1];
+					if (count > maxCount || count == maxCount && Math.Abs((end + start) / 2.0) < Math.Abs(maxAngle))
+					{
+						maxCount = count;
+						maxAngle = sum;
+					}
+					if (k + count >= angles.Length) break;
+					k++;
+					k += angles.Skip(k).TakeWhile(angle => angle == start).Count();
+				}
+				if (Math.Abs(maxAngle) < delta) return null;
+
+				lock(SubtitleImage.italicSync)
+				{
+					if (SubtitleImage.italicAngle.HasValue)
+						return SubtitleImage.italicAngle;
+
+					SubtitleImage.angleList += maxAngle;
+					SubtitleImage.angleCount += maxCount;
+					if (SubtitleImage.angleCount >= 20)
+					{
+						SubtitleImage.italicAngle = SubtitleImage.angleList / SubtitleImage.angleCount;
+						return SubtitleImage.italicAngle;
+					}
+					return maxAngle / maxCount;
+				}
+			}
+
+			public void AdjustItalic(SubtitleLetter[] letters)
+			{
+				double angle = GetItalicAngle(letters) ?? 0.0;
+				if (angle == 0.0) return;
+				var italic = new List<SubtitleLetter>();
+				int wordStart = 0;
+				int canStart = letters.Length;
+				bool hasRegilar = false;
+				for (int k = 0; k < letters.Length; k++)
+				{
+					var letter = letters[k];
+					if (letter.Text == " " || letter.Text == "\r\n")
+					{
+						if (letter.Text == "\r\n")
+							canStart = letters.Length;
+						wordStart = k + 1;
+						continue;
+					}
+					if (((letter.ExactAngle ?? 0.0) == 0.0) || Math.Abs(letter.ExactAngle.Value - angle) >= 1.0 / SubtitleLetter.minAngleDiv)
+					{
+						if (letter.ExactAngle == 0.0)
+							hasRegilar = true;
+						continue;
+					}
+					int wordEnd = k;
+					for (int n = k + 1; n < letters.Length; n++)
+					{
+						var letter2 = letters[n];
+						if (letter2.Text == " " || letter2.Text == "\r\n")
+							break;
+						wordEnd = n;
+					}
+					var word = letters.Skip(wordStart).Take(wordEnd - wordStart + 1).ToArray();
+					int count1 = word.Count(l => l.ExactAngle.HasValue && Math.Abs(l.ExactAngle.Value) < 1.0 / SubtitleLetter.minAngleDiv);
+					int count2 = word.Count(l => l.ExactAngle.HasValue && Math.Abs(l.ExactAngle.Value - angle) < 1.0 / SubtitleLetter.minAngleDiv);
+					if (count2 > count1)
+					{
+						if (canStart < wordStart)
+							italic.AddRange(letters.Skip(canStart).Take(wordStart - canStart));
+						italic.AddRange(word);
+						canStart = wordEnd + 1;
+					}
+					else
+						hasRegilar = true;
+					k = wordEnd;
+				}
+				if (italic.Any() && !hasRegilar)
+					italic = letters.Where(l => l.Text != "\r\n").ToList();
+				italic.AsParallel().ForAll(letter =>
+				{
+					letter.Angle = angle;
+					letter.ApplyAngle();
+				});
 			}
 		}
-		private enum Anchor
-		{
-			Center,
-			Top,
-			Bottom
-		}
-		private enum Side
-		{
-			Left,
-			Right
-		}
+
 		public const int pixelLimitAsSet = 60;
+		public const int minLineHeight = 20;
+		public const int minLineSpace = 5;
+
+		public byte maxPixelLevel = 255;
+		public byte minPixelLevel = 0;
+
 		private Rectangle subtitleBorders;
 		public Bitmap subtitleBitmap;
+		/// <summary>
+		/// Pixels bitmap
+		/// </summary>
 		private byte[,] subtitleArray;
-		private byte[,] uncorrectedArray;
-		private int height;
-		private int width;
+		private int[,] nextArray;
 		private SubtitleImage.TextLine[] textLines;
-		public LinkedList<SubtitleLetter> letters;
-		public LinkedList<SubtitleLetter> alternativeLetters;
-		public SortedList<int, Space> debugLocations;
-		public LinkedList<Point> debugPoints;
-		private static LinkedList<double> angleList;
+		public SubtitleLetter[] letters;
+#if DEBUG
+		public LinkedList<PointF> debugPoints;
+		public LinkedList<PointF[]> debugLines;
+#endif
+		private static double angleList;
 		private static int angleCount;
-		private static double italicAngle;
+		private static object italicSync = new object();
+		public static double? italicAngle;
 		public SubtitleImage(Bitmap source)
 		{
 			this.subtitleBitmap = new Bitmap(source.Width + 20, source.Height, PixelFormat.Format32bppArgb);
@@ -102,592 +491,107 @@ namespace SupRip
 			graphics.Dispose();
 			this.CreateSubtitleArray();
 		}
+
+		private static void FindNextRange(byte[,] image, int [,] nextArray, int line, byte pixelLevel1, byte pixelLevel2)
+		{
+			int lineWidth = nextArray.GetLength(1);
+			int next = lineWidth;
+			int pixel = image[line, lineWidth - 1] >= pixelLevel1 ? -1 : 1;
+			int j2 = lineWidth + pixel;
+			nextArray[line, lineWidth - 1] = next * pixel;
+			for (int j = lineWidth - 2; j >= 0; j--)
+			{
+				if ((pixel == -1) != (image[line, j] >= pixelLevel1))
+				{
+					next = j + 1;
+					pixel = -pixel;
+				}
+				if (image[line, j] > pixelLevel2)
+				{
+					if (j2 > j + 1 && j2 < next)
+					{
+						for (int j3 = j + 1; j3 < j2; j3++)
+							nextArray[line, j3] = j2;
+						next = j + 1;
+					}
+					j2 = j;
+				}
+				nextArray[line, j] = next * pixel;
+			}
+		}
+
 		private void CreateSubtitleArray()
 		{
-			BitmapData bitmapData = this.subtitleBitmap.LockBits(new Rectangle(0, 0, this.subtitleBitmap.Width, this.subtitleBitmap.Height), ImageLockMode.ReadOnly, this.subtitleBitmap.PixelFormat);
-			byte[] array = new byte[this.subtitleBitmap.Size.Width * this.subtitleBitmap.Size.Height * 4];
+			int lineWidth = this.subtitleBitmap.Size.Width;
+			int columnHeight = this.subtitleBitmap.Height;
+			BitmapData bitmapData = this.subtitleBitmap.LockBits(new Rectangle(0, 0, lineWidth, columnHeight), ImageLockMode.ReadOnly, this.subtitleBitmap.PixelFormat);
+			byte[] array = new byte[lineWidth * columnHeight * 4];
 			IntPtr scan = bitmapData.Scan0;
 			Marshal.Copy(scan, array, 0, array.Length);
 			this.subtitleBitmap.UnlockBits(bitmapData);
-			this.width = this.subtitleBitmap.Size.Width;
-			this.height = this.subtitleBitmap.Size.Height;
-			this.subtitleArray = new byte[this.subtitleBitmap.Size.Height, this.subtitleBitmap.Size.Width];
-			int num = 0;
-			for (int i = 0; i < this.subtitleBitmap.Size.Height; i++)
+			this.subtitleArray = new byte[columnHeight, lineWidth];
+			this.nextArray = new int[this.subtitleArray.GetLength(0), this.subtitleArray.GetLength(1)];
+			this.maxPixelLevel = 0;
+			this.minPixelLevel = 255;
+			var maxPixelSync = new object();
+			ParallelEnumerable.Range(0, columnHeight).ForAll(i =>
 			{
-				for (int j = 0; j < this.subtitleBitmap.Size.Width; j++)
+				int num = i * lineWidth * 4;
+				for (int j = 0; j < lineWidth; j++)
 				{
-					byte b = (byte)((int)((array[num++] + array[num++] + array[num++]) * array[num++]) / 768);
-					if (b < 30)
-					{
-						this.subtitleArray[i, j] = 0;
-					}
-					else
-					{
-						this.subtitleArray[i, j] = b;
-					}
+					byte b = (byte)((int)(((int)array[num++] + (int)array[num++] + (int)array[num++]) * (int)array[num++]) / 768);
+					this.subtitleArray[i, j] = b < pixelLimitAsSet / 2 ? (byte)0 : b;
+					if (b > this.maxPixelLevel || b < this.minPixelLevel)
+						lock(maxPixelSync)
+						{
+							if (b > this.maxPixelLevel)
+								this.maxPixelLevel = b;
+							if (b < this.minPixelLevel)
+								this.minPixelLevel = b;
+						}
 				}
+			});
+			if (this.maxPixelLevel == this.minPixelLevel)
+			{
+				this.minPixelLevel = 0;
+				this.maxPixelLevel = 255;
 			}
+			byte pixelLevel1 = (byte)((maxPixelLevel - minPixelLevel) >> 2 + minPixelLevel);
+			byte pixelLevel2 = (byte)(maxPixelLevel - ((maxPixelLevel - minPixelLevel) >> 2));
+			ParallelEnumerable.Range(0, columnHeight).ForAll(i =>
+			{
+				FindNextRange(this.subtitleArray, this.nextArray, i, pixelLevel1, pixelLevel2);
+			});
 			if (AppOptions.contrast != 0)
 			{
 				double fact = 0.5 + (double)(AppOptions.contrast / 5);
-				for (int k = 0; k < this.subtitleBitmap.Size.Height; k++)
+				ParallelEnumerable.Range(0, columnHeight).ForAll(k =>
 				{
-					for (int l = 0; l < this.subtitleBitmap.Size.Width; l++)
+					for (int l = 0; l < lineWidth; l++)
 					{
 						this.subtitleArray[k, l] = this.Logistic(this.subtitleArray[k, l], fact);
 					}
-				}
+				});
 			}
 			DateTime now = DateTime.Now;
-			this.textLines = this.FindTextLines(this.subtitleArray);
-			this.AdjustItalicLines();
-			this.letters = this.FindLetters(this.subtitleArray, false);
-			this.alternativeLetters = this.FindLetters(this.uncorrectedArray, true);
+			this.textLines = TextLine.Find(this.nextArray);
+
+			this.letters = this.textLines.SelectMany(line => line.FindLetters(this.subtitleArray, this.nextArray, pixelLevel1, pixelLevel2)).ToArray();
+#if DEBUG
+			this.debugPoints = new LinkedList<PointF>(this.textLines.SelectMany(_l => _l.debugPoints));
+			this.debugLines = new LinkedList<PointF[]>(this.textLines.SelectMany(_l => _l.debugLines));
+#endif
+			//this.alternativeLetters = this.FindLetters(this.uncorrectedArray, true);
 			Debugger.lettersTime += (DateTime.Now - now).TotalMilliseconds;
 		}
+
 		private byte Logistic(byte x, double fact)
 		{
 			double num = ((double)x - 128.0) * 5.0 / 128.0;
-			double num2 = 1.0 / (1.0 + Math.Pow(2.7182818284590451, -num * fact));
+			double num2 = 1.0 / (1.0 + Math.Pow(Math.E, -num * fact));
 			return (byte)(num2 * 256.0);
 		}
-		private SubtitleImage.TextLine[] FindTextLines(byte[,] workArray)
-		{
-			LinkedList<SubtitleImage.TextLine> linkedList = new LinkedList<SubtitleImage.TextLine>();
-			int length = workArray.GetLength(0);
-			workArray.GetLength(1);
-			int num = 0;
-			int num2 = 0;
-			int num4;
-			while (true)
-			{
-				int num3 = num;
-				while (num3 < length && !this.LineContainsPixels(workArray, num3))
-				{
-					num3++;
-				}
-				if (num3 == length)
-				{
-					goto IL_98;
-				}
-				num4 = num3;
-				while (num3 < length && this.LineContainsPixels(workArray, num3))
-				{
-					num3++;
-				}
-				if (num3 == length)
-				{
-					break;
-				}
-				num = num3;
-				linkedList.AddLast(new SubtitleImage.TextLine(num2, num4, num));
-				num2++;
-			}
-			num = length - 1;
-			if (num - num4 > 20)
-			{
-				linkedList.AddLast(new SubtitleImage.TextLine(num2, num4, num));
-			}
-			IL_98:
-			SubtitleImage.TextLine[] array = new SubtitleImage.TextLine[linkedList.Count];
-			linkedList.CopyTo(array, 0);
-			int num5 = array.Length;
-			SubtitleImage.TextLine textLine = null;
-			for (int i = 0; i < array.Length; i++)
-			{
-				if (array[i].Height < 20)
-				{
-					if (array.Length == 1)
-					{
-						throw new Exception("Could only find one line of text, and it's smaller than 20 pixels");
-					}
-					if (i == 0)
-					{
-						array[1].Start = array[0].Start;
-					}
-					else
-					{
-						if (i == array.Length - 1)
-						{
-							textLine.End = array[i].End;
-						}
-						else
-						{
-							int num6 = array[i].Start - textLine.End;
-							int num7 = array[i + 1].Start - array[i].End;
-							if (num6 < 5 || num7 / num6 > 2)
-							{
-								textLine.End = array[i].End;
-							}
-							else
-							{
-								if (num7 < 5 || num6 / num7 > 2)
-								{
-									array[i + 1].Start = array[i].Start;
-								}
-								else
-								{
-									if (num6 < num7)
-									{
-										textLine.End = array[i].End;
-									}
-									else
-									{
-										array[i + 1].Start = array[i].Start;
-									}
-								}
-							}
-						}
-					}
-					array[i] = null;
-					num5--;
-				}
-				else
-				{
-					textLine = array[i];
-				}
-			}
-			int num8 = 0;
-			SubtitleImage.TextLine[] array2 = new SubtitleImage.TextLine[num5];
-			for (int j = 0; j < array.Length; j++)
-			{
-				if (array[j] != null)
-				{
-					array2[num8] = array[j];
-					num8++;
-				}
-			}
-			return array2;
-		}
-		private double FindLineAngle(byte[,] image, SubtitleImage.TextLine line)
-		{
-			int length = image.GetLength(1);
-			int[] array = new int[20];
-			double result;
-			if (SubtitleImage.italicAngle != 0.0)
-			{
-				for (int i = 0; i < length; i++)
-				{
-					if (!this.ColumnContainsPixels(this.subtitleArray, i, line.Start, line.End))
-					{
-						array[0]++;
-					}
-					if (!this.ColumnContainsPixels(this.subtitleArray, i, SubtitleImage.italicAngle, line.Start, line.End))
-					{
-						array[1]++;
-					}
-				}
-				if (array[1] > array[0])
-				{
-					result = SubtitleImage.italicAngle;
-				}
-				else
-				{
-					result = 0.0;
-				}
-			}
-			else
-			{
-				if (SubtitleImage.angleList == null)
-				{
-					SubtitleImage.angleList = new LinkedList<double>();
-				}
-				int num = 0;
-				int num2 = -1;
-				for (int j = 0; j < 20; j++)
-				{
-					if (j <= 0 || j >= 5)
-					{
-						for (int k = 0; k < length; k++)
-						{
-							if (!this.ColumnContainsPixels(this.subtitleArray, k, (double)j / 30.0, line.Start, line.End))
-							{
-								array[j]++;
-							}
-						}
-						if (array[j] > num)
-						{
-							num = array[j];
-							num2 = j;
-						}
-					}
-				}
-				if (num2 != 0 && SubtitleImage.angleCount < 20)
-				{
-					SubtitleImage.angleList.AddLast((double)num2 / 30.0);
-					SubtitleImage.angleCount++;
-				}
-				if (SubtitleImage.angleCount == 20)
-				{
-					foreach (double num3 in SubtitleImage.angleList)
-					{
-						SubtitleImage.italicAngle += num3;
-					}
-					SubtitleImage.italicAngle /= 20.0;
-				}
-				result = (double)num2 / 30.0;
-			}
-			return result;
-		}
-		private void FindSpaces(int yStart, int yEnd, bool partial, ref SortedList<int, Space> spaces)
-		{
-			int[] array = new int[this.subtitleBitmap.Size.Width];
-			for (int i = 0; i < this.subtitleBitmap.Size.Width; i++)
-			{
-				array[i] = this.ColumnFilledPixels(this.subtitleArray, i, yStart, yEnd);
-			}
-			int num = 1;
-			bool flag = false;
-			int num2 = 0;
-			for (int j = 0; j < this.subtitleBitmap.Size.Width; j++)
-			{
-				if (flag && array[j] < num)
-				{
-					num2 = j;
-					flag = false;
-				}
-				if ((!flag && array[j] >= num) || (!flag && j == this.subtitleBitmap.Size.Width - 1))
-				{
-					if (j - num2 >= AppOptions.charSplitTolerance || j < AppOptions.charSplitTolerance || j >= this.subtitleBitmap.Size.Width - AppOptions.charSplitTolerance)
-					{
-						int num3 = j;
-						if (j == this.subtitleBitmap.Size.Width - 1)
-						{
-							num3++;
-						}
-						Rectangle rectangle = new Rectangle(num2, yStart, num3 - num2, yEnd - yStart);
-						bool flag2 = false;
-						if (partial)
-						{
-							foreach (KeyValuePair<int, Space> current in spaces)
-							{
-								Space value = current.Value;
-								if (this.Intersects(rectangle, value.Rect))
-								{
-									flag2 = true;
-									break;
-								}
-							}
-						}
-						if (!flag2)
-						{
-							Space space = new Space(rectangle, partial);
-							spaces.Add(space.Hash, space);
-						}
-					}
-					flag = true;
-				}
-			}
-		}
-		private bool Intersects(Rectangle r1, Rectangle r2)
-		{
-			return r2.Left <= r1.Right && r2.Right >= r1.Left && r2.Top <= r2.Bottom && r2.Bottom >= r2.Top;
-		}
-		private bool Intersects(Rectangle r1, SortedList<int, Space> rList)
-		{
-			foreach (KeyValuePair<int, Space> current in rList)
-			{
-				if (this.Intersects(r1, current.Value.Rect))
-				{
-					return true;
-				}
-			}
-			return false;
-		}
-		private void ExtendPartialSpace(int yStart, int yEnd, Space r)
-		{
-			if (!r.Partial)
-			{
-				return;
-			}
-			if (r.Rect.Top == yStart)
-			{
-				int num = r.Rect.Bottom;
-				while (num < yEnd && !this.LineContainsPixels(this.subtitleArray, num, r.Rect.Left, r.Rect.Right))
-				{
-					num++;
-				}
-				r.Resize(0, 0, 0, num - r.Rect.Bottom);
-			}
-			if (r.Rect.Bottom == yEnd)
-			{
-				int num = r.Rect.Top;
-				while (num >= yStart && !this.LineContainsPixels(this.subtitleArray, num, r.Rect.Left, r.Rect.Right))
-				{
-					num--;
-				}
-				r.Resize(0, r.Rect.Top - num, 0, 0);
-			}
-			if (r.Rect.Top <= yStart && r.Rect.Bottom >= yEnd - 1)
-			{
-				r.Partial = false;
-			}
-		}
-		private void ExtendPartialSpaces(int yStart, int yEnd, ref SortedList<int, Space> spaces)
-		{
-			foreach (KeyValuePair<int, Space> current in spaces)
-			{
-				Space arg_18_0 = current.Value;
-				this.ExtendPartialSpace(yStart, yEnd, current.Value);
-			}
-		}
-		private void CleanupSpaces(ref SortedList<int, Space> spaces)
-		{
-			int num = -10000;
-			LinkedList<int> linkedList = new LinkedList<int>();
-			foreach (KeyValuePair<int, Space> current in spaces)
-			{
-				if (current.Value.Partial)
-				{
-					linkedList.AddLast(current.Key);
-				}
-				else
-				{
-					if (current.Value.Rect.Left - num < 4)
-					{
-						linkedList.AddLast(current.Key);
-					}
-					num = current.Value.Rect.Right;
-				}
-			}
-			foreach (int current2 in linkedList)
-			{
-				spaces.Remove(current2);
-			}
-		}
-		private void FindDiagonalBreaks(int yStart, int yEnd, ref SortedList<int, Space> rectangles)
-		{
-			SortedList<int, Space> sortedList = new SortedList<int, Space>();
-			int charSplitTolerance = AppOptions.charSplitTolerance;
-			foreach (KeyValuePair<int, Space> current in rectangles)
-			{
-				Space value = current.Value;
-				if (value.Partial)
-				{
-					bool flag = false;
-					if (value.Rect.Bottom == yEnd)
-					{
-						for (double num = 0.1; num < 0.5; num += 0.1)
-						{
-							int num2 = value.Rect.Right;
-							while (num2 > value.Rect.Right - charSplitTolerance && !this.ColumnContainsPixels(this.subtitleArray, num2, num, yStart, value.Rect.Top + 2, SubtitleImage.Anchor.Bottom))
-							{
-								num2--;
-							}
-							if (num2 <= value.Rect.Right - charSplitTolerance)
-							{
-								Space space = new Space(value.Rect.Right, yStart, 0, yEnd - yStart - 1, false, Space.SpaceType.TopRight, value.Rect.Top - yStart + 2, num);
-								sortedList.Add(space.Hash, space);
-								flag = true;
-								break;
-							}
-						}
-						if (!flag)
-						{
-							for (double num3 = -0.1; num3 > -0.5; num3 -= 0.1)
-							{
-								int num4 = value.Rect.Left - 1;
-								while (num4 < value.Rect.Left + charSplitTolerance - 1 && !this.ColumnContainsPixels(this.subtitleArray, num4, num3, yStart, value.Rect.Top + 2, SubtitleImage.Anchor.Bottom))
-								{
-									num4++;
-								}
-								if (num4 >= value.Rect.Left + charSplitTolerance - 1)
-								{
-									Space space2 = new Space(value.Rect.Left, yStart, 0, yEnd - yStart - 1, false, Space.SpaceType.TopLeft, value.Rect.Top - yStart + 2, num3);
-									sortedList.Add(space2.Hash, space2);
-									break;
-								}
-							}
-						}
-					}
-					else
-					{
-						if (value.Rect.Top == yStart)
-						{
-							for (double num5 = -0.1; num5 > -0.5; num5 -= 0.1)
-							{
-								int num6 = value.Rect.Right;
-								while (num6 > value.Rect.Right - charSplitTolerance && !this.ColumnContainsPixels(this.subtitleArray, num6, num5, value.Rect.Bottom - 2, yEnd, SubtitleImage.Anchor.Top))
-								{
-									num6--;
-								}
-								if (num6 <= value.Rect.Right - charSplitTolerance)
-								{
-									Space space3 = new Space(value.Rect.Right, yStart, 0, yEnd - yStart - 1, false, Space.SpaceType.BottomRight, value.Rect.Bottom - yStart - 2, num5);
-									sortedList.Add(space3.Hash, space3);
-									break;
-								}
-							}
-							if (!flag)
-							{
-								for (double num7 = 0.1; num7 < 0.5; num7 += 0.1)
-								{
-									int num8 = value.Rect.Left - 1;
-									while (num8 < value.Rect.Left + charSplitTolerance - 1 && !this.ColumnContainsPixels(this.subtitleArray, num8, num7, value.Rect.Bottom - 2, yEnd, SubtitleImage.Anchor.Top))
-									{
-										num8++;
-									}
-									if (num8 >= value.Rect.Left + charSplitTolerance - 1)
-									{
-										Space space4 = new Space(value.Rect.Left, yStart, 0, yEnd - yStart - 1, false, Space.SpaceType.BottomLeft, value.Rect.Bottom - yStart - 2, num7);
-										sortedList.Add(space4.Hash, space4);
-										break;
-									}
-								}
-							}
-						}
-					}
-				}
-			}
-			foreach (KeyValuePair<int, Space> current2 in sortedList)
-			{
-				rectangles.Add(current2.Value.Hash + 1, current2.Value);
-			}
-		}
-		private void CorrectItalics(int yStart, int yEnd, double angle)
-		{
-			byte[,] array = new byte[this.height, this.width];
-			for (int i = yStart; i < yEnd; i++)
-			{
-				double num = angle * (double)((yStart + yEnd) / 2 - i);
-				double num2 = num - Math.Floor(num);
-				int num3 = (int)Math.Floor(num);
-				for (int j = 0; j < this.width; j++)
-				{
-					if (j + num3 >= 0 && j + num3 + 1 < this.width)
-					{
-						array[i, j] = (byte)((1.0 - num2) * (double)this.subtitleArray[i, j + num3] + num2 * (double)this.subtitleArray[i, j + num3 + 1]);
-					}
-				}
-			}
-			for (int k = 0; k < yStart; k++)
-			{
-				for (int l = 0; l < this.width; l++)
-				{
-					array[k, l] = this.subtitleArray[k, l];
-				}
-			}
-			for (int m = yEnd; m < this.height; m++)
-			{
-				for (int n = 0; n < this.width; n++)
-				{
-					array[m, n] = this.subtitleArray[m, n];
-				}
-			}
-			this.subtitleArray = array;
-		}
-		private void AdjustItalicLines()
-		{
-			this.uncorrectedArray = (byte[,])this.subtitleArray.Clone();
-			SubtitleImage.TextLine[] array = this.textLines;
-			for (int i = 0; i < array.Length; i++)
-			{
-				SubtitleImage.TextLine textLine = array[i];
-				DateTime now = DateTime.Now;
-				textLine.angle = this.FindLineAngle(this.subtitleArray, textLine);
-				if (textLine.angle != 0.0)
-				{
-					this.CorrectItalics(textLine.Start, textLine.End, textLine.angle);
-				}
-				Debugger.angleTime += (DateTime.Now - now).TotalMilliseconds;
-			}
-		}
-		public LinkedList<SubtitleLetter> FindLetters(byte[,] workArray, bool reverseItalics)
-		{
-			LinkedList<SubtitleLetter> linkedList = new LinkedList<SubtitleLetter>();
-			DateTime now = DateTime.Now;
-			Debugger.linesTime += (DateTime.Now - now).TotalMilliseconds;
-			this.debugLocations = new SortedList<int, Space>();
-			this.debugPoints = new LinkedList<Point>();
-			int num = 0;
-			SubtitleImage.TextLine[] array = this.textLines;
-			for (int i = 0; i < array.Length; i++)
-			{
-				SubtitleImage.TextLine textLine = array[i];
-				num++;
-				if (textLine.Num != 0)
-				{
-					Rectangle rectangle = new Rectangle(1, textLine.Start - 20, 10, 25);
-					linkedList.AddLast(new SubtitleLetter(rectangle, "\r\n"));
-				}
-				now = DateTime.Now;
-				SortedList<int, Space> sortedList = new SortedList<int, Space>();
-				this.FindSpaces(textLine.Start, textLine.End, false, ref sortedList);
-				this.FindSpaces(textLine.Start, textLine.Start + textLine.Height * 2 / 3, true, ref sortedList);
-				this.FindSpaces(textLine.Start + (textLine.End - textLine.Start) / 3, textLine.End, true, ref sortedList);
-				this.FindSpaces(textLine.Start, (textLine.Start + textLine.End) / 2, true, ref sortedList);
-				this.FindSpaces((textLine.Start + textLine.End) / 2, textLine.End, true, ref sortedList);
-				this.MergeSpaces(textLine.Start, textLine.End, ref sortedList);
-				this.ExtendPartialSpaces(textLine.Start, textLine.End, ref sortedList);
-				this.FindDiagonalBreaks(textLine.Start, textLine.End, ref sortedList);
-				this.CleanupSpaces(ref sortedList);
-				Debugger.spacesTime += (DateTime.Now - now).TotalMilliseconds;
-				Space space = null;
-				foreach (KeyValuePair<int, Space> current in sortedList)
-				{
-					if (space == null)
-					{
-						space = current.Value;
-					}
-					else
-					{
-						int right = space.Rect.Right;
-						int left = current.Value.Rect.Left;
-						Rectangle rectangle;
-						if (space.Rect.X != 0 && space.Rect.Width > AppOptions.minimumSpaceCharacterWidth)
-						{
-							rectangle = new Rectangle(space.Rect.Left + 3, textLine.Start + 4, space.Rect.Width - 6, textLine.Height - 10);
-							linkedList.AddLast(new SubtitleLetter(rectangle, textLine.angle, " "));
-						}
-						int start = textLine.Start;
-						int end = textLine.End;
-						rectangle = new Rectangle(right, start, left - right, end - start);
-						now = DateTime.Now;
-						SubtitleLetter subtitleLetter = this.ExtractLetter(rectangle, textLine.angle, space, current.Value);
-						Debugger.extractTime += (DateTime.Now - now).TotalMilliseconds;
-						if (subtitleLetter != null)
-						{
-							subtitleLetter.Height = (subtitleLetter.Coords.Y + subtitleLetter.Coords.Bottom) / 2 - (textLine.Start + textLine.End) / 2;
-							linkedList.AddLast(subtitleLetter);
-						}
-						space = current.Value;
-					}
-				}
-			}
-			return linkedList;
-		}
-		private void MergeSpaces(int yStart, int yEnd, ref SortedList<int, Space> rectangles)
-		{
-			Space space = null;
-			int value = -1;
-			LinkedList<int> linkedList = new LinkedList<int>();
-			LinkedList<Space> linkedList2 = new LinkedList<Space>();
-			foreach (KeyValuePair<int, Space> current in rectangles)
-			{
-				if (space != null && space.Partial && space.Partial == current.Value.Partial && current.Value.Rect.Left - space.Rect.Right < 10 && (space.Rect.Top == current.Value.Rect.Top || space.Rect.Bottom == current.Value.Rect.Bottom))
-				{
-					Space space2 = new Space(space.Rect.X, space.Rect.Bottom - 1, current.Value.Rect.Right - space.Rect.X, 1, true);
-					this.ExtendPartialSpace(yStart, yEnd, space2);
-					if (space.Rect.Height - space2.Rect.Height < 5 && current.Value.Rect.Height - space2.Rect.Height < 5)
-					{
-						linkedList.AddLast(current.Key);
-						linkedList.AddLast(value);
-						linkedList2.AddLast(space2);
-					}
-				}
-				space = current.Value;
-				value = current.Key;
-			}
-			foreach (int current2 in linkedList)
-			{
-				rectangles.Remove(current2);
-			}
-			foreach (Space current3 in linkedList2)
-			{
-				rectangles.Add(current3.Hash, current3);
-			}
-		}
+
 		private void FindBorders()
 		{
 			if (this.subtitleBitmap == null)
@@ -788,17 +692,6 @@ namespace SupRip
 			}
 			return false;
 		}
-		private bool LineContainsPixels(byte[] bytes, int w, int line, int limit, int x1, int x2)
-		{
-			for (int i = (line * w + x1) * 4; i < (line * w + x2) * 4; i += 4)
-			{
-				if (((int)bytes[i] > limit || (int)bytes[i + 1] > limit || (int)bytes[i + 2] > limit) && bytes[i + 3] > 0)
-				{
-					return true;
-				}
-			}
-			return false;
-		}
 		private bool ColumnContainsPixels(byte[] bytes, int w, int column, int limit)
 		{
 			for (int i = column * 4; i < bytes.Length; i += w * 4)
@@ -810,85 +703,7 @@ namespace SupRip
 			}
 			return false;
 		}
-		private bool LineContainsPixels(byte[,] image, int line)
-		{
-			return this.LineContainsPixels(image, line, 0, image.GetLength(1));
-		}
-		private bool LineContainsPixels(byte[,] image, int line, int x1, int x2)
-		{
-			int num = x1;
-			while (num < x2 && image[line, num] < 60)
-			{
-				num++;
-			}
-			return num < x2;
-		}
-		private bool ColumnContainsPixels(byte[,] image, int column)
-		{
-			return this.ColumnContainsPixels(image, column, 0, image.GetLength(0));
-		}
-		private bool ColumnContainsPixels(byte[,] image, int column, int y1, int y2)
-		{
-			int num = y1;
-			while (num < y2 && image[num, column] < 60)
-			{
-				num++;
-			}
-			return num < y2;
-		}
-		private int ColumnFilledPixels(byte[,] image, int column, int y1, int y2)
-		{
-			int num = 0;
-			for (int i = y1; i < y2; i++)
-			{
-				if (image[i, column] >= 60)
-				{
-					num++;
-				}
-			}
-			return num;
-		}
-		private bool ColumnContainsPixels(byte[,] image, int column, double angle, int y1, int y2)
-		{
-			if (angle == 0.0)
-			{
-				return this.ColumnContainsPixels(image, column, y1, y2);
-			}
-			int length = image.GetLength(1);
-			int num = column + (int)((double)(y2 - y1) * angle) / 2;
-			int num2;
-			int num3;
-			if (angle > 0.0)
-			{
-				num2 = Math.Max(y1 + (int)((double)(num - length + 1) / angle) + 1, y1);
-				num3 = Math.Min(y1 + (int)((double)num / angle), y2);
-			}
-			else
-			{
-				num2 = Math.Max(y1 + (int)((double)num / angle) + 1, y1);
-				num3 = Math.Min(y1 + (int)((double)(num - length + 1) / angle), y2);
-			}
-			int num4 = num2;
-			while (num4 < num3 && image[num4, num - (int)((double)(num4 - y1) * angle)] < 60)
-			{
-				num4++;
-			}
-			return num4 < num3;
-		}
-		private bool ColumnContainsPixels(byte[,] image, int column, double angle, int y1, int y2, SubtitleImage.Anchor anchor)
-		{
-			if (anchor == SubtitleImage.Anchor.Center)
-			{
-				return this.ColumnContainsPixels(image, column, angle, y1, y2);
-			}
-			if (anchor == SubtitleImage.Anchor.Bottom)
-			{
-				int column2 = column + (int)((double)(y2 - y1) * angle) / 2;
-				return this.ColumnContainsPixels(image, column2, angle, y1, y2);
-			}
-			int column3 = column - (int)((double)(y2 - y1) * angle) / 2;
-			return this.ColumnContainsPixels(image, column3, angle, y1, y2);
-		}
+
 		public string GetText()
 		{
 			if (this.letters == null)
@@ -924,256 +739,7 @@ namespace SupRip
 			}
 			return stringBuilder.ToString();
 		}
-		private byte[,] TrimExtension(byte[,] old, SubtitleImage.Side side)
-		{
-			int length = old.GetLength(0);
-			int length2 = old.GetLength(1);
-			byte[,] array;
-			if (side == SubtitleImage.Side.Right)
-			{
-				int num = length2 - 1;
-				while (num >= 0 && !this.ColumnContainsPixels(old, num))
-				{
-					num--;
-				}
-				if (num == -1)
-				{
-					return null;
-				}
-				num++;
-				array = new byte[length, num];
-				for (int i = 0; i < length; i++)
-				{
-					for (int j = 0; j < num; j++)
-					{
-						array[i, j] = old[i, j];
-					}
-				}
-			}
-			else
-			{
-				if (side != SubtitleImage.Side.Left)
-				{
-					throw new Exception("invalid argument for TrimExtension " + side);
-				}
-				int num = 0;
-				while (num < length2 && !this.ColumnContainsPixels(old, num))
-				{
-					num++;
-				}
-				if (num == length2)
-				{
-					return null;
-				}
-				num = length2 - num;
-				array = new byte[length, num];
-				for (int k = 0; k < length; k++)
-				{
-					for (int l = 0; l < num; l++)
-					{
-						array[k, l] = old[k, l + length2 - num];
-					}
-				}
-			}
-			return array;
-		}
-		private byte[,] CombineArrays(byte[,] a, byte[,] b)
-		{
-			if (a.GetLength(0) != b.GetLength(0))
-			{
-				throw new Exception("Trying to combine two arrays that don't have the same height");
-			}
-			byte[,] array = new byte[a.GetLength(0), a.GetLength(1) + b.GetLength(1)];
-			for (int i = 0; i < a.GetLength(0); i++)
-			{
-				for (int j = 0; j < a.GetLength(1); j++)
-				{
-					array[i, j] = a[i, j];
-				}
-				for (int k = 0; k < b.GetLength(1); k++)
-				{
-					array[i, k + a.GetLength(1)] = b[i, k];
-				}
-			}
-			return array;
-		}
-		public SubtitleLetter ExtractLetter(Rectangle rect, double angle, Space lastSpace, Space nextSpace)
-		{
-			byte[,] array = new byte[rect.Height, rect.Width];
-			for (int i = 0; i < rect.Height; i++)
-			{
-				for (int j = 0; j < rect.Width; j++)
-				{
-					array[i, j] = this.subtitleArray[rect.Top + i, rect.Left + j];
-				}
-			}
-			if (lastSpace.Type == Space.SpaceType.TopRight)
-			{
-				for (int k = 0; k < lastSpace.SlopeStart; k++)
-				{
-					int num = 0;
-					while (num < (int)((double)(lastSpace.SlopeStart - k) * lastSpace.Angle) + 1 && num < rect.Width)
-					{
-						array[k, num] = 0;
-						num++;
-					}
-				}
-			}
-			if (lastSpace.Type == Space.SpaceType.BottomRight)
-			{
-				for (int l = lastSpace.SlopeStart; l < rect.Height; l++)
-				{
-					int num2 = 0;
-					while (num2 < (int)((double)(l - lastSpace.SlopeStart) * -lastSpace.Angle) + 1 && num2 < rect.Width)
-					{
-						array[l, num2] = 0;
-						num2++;
-					}
-				}
-			}
-			if (nextSpace.Type == Space.SpaceType.TopLeft)
-			{
-				for (int m = 0; m < nextSpace.SlopeStart; m++)
-				{
-					int num3 = 0;
-					while (num3 < (int)((double)(nextSpace.SlopeStart - m) * -nextSpace.Angle) + 1 && num3 < rect.Width)
-					{
-						array[m, rect.Width - num3 - 1] = 0;
-						num3++;
-					}
-				}
-			}
-			if (nextSpace.Type == Space.SpaceType.BottomLeft)
-			{
-				for (int n = nextSpace.SlopeStart; n < rect.Height; n++)
-				{
-					int num4 = 0;
-					while (num4 < (int)((double)(n - nextSpace.SlopeStart) * nextSpace.Angle) + 1 && num4 < rect.Width)
-					{
-						array[n, rect.Width - num4 - 1] = 0;
-						num4++;
-					}
-				}
-			}
-			if (nextSpace.Type == Space.SpaceType.TopRight)
-			{
-				int num5 = Math.Min(this.width - rect.Right, (int)((double)nextSpace.SlopeStart * nextSpace.Angle));
-				byte[,] array2 = new byte[rect.Height, num5];
-				for (int num6 = 0; num6 < nextSpace.SlopeStart; num6++)
-				{
-					int num7 = 0;
-					while (num7 < (int)Math.Round((double)(nextSpace.SlopeStart - num6) * nextSpace.Angle) && num7 < num5)
-					{
-						array2[num6, num7] = this.subtitleArray[rect.Top + num6, rect.Right + num7];
-						num7++;
-					}
-				}
-				array2 = this.TrimExtension(array2, SubtitleImage.Side.Right);
-				if (array2 != null)
-				{
-					array = this.CombineArrays(array, array2);
-					rect.Width += array2.GetLength(1);
-				}
-			}
-			if (nextSpace.Type == Space.SpaceType.BottomRight)
-			{
-				int num8 = Math.Min(this.width - rect.Right, (int)((double)(rect.Height - nextSpace.SlopeStart) * -nextSpace.Angle) + 1);
-				byte[,] array3 = new byte[rect.Height, num8];
-				for (int num9 = nextSpace.SlopeStart; num9 < rect.Height; num9++)
-				{
-					int num10 = 0;
-					while (num10 < (int)Math.Round((double)(nextSpace.SlopeStart - num9) * nextSpace.Angle) && num10 < num8)
-					{
-						array3[num9, num10] = this.subtitleArray[rect.Top + num9, rect.Right + num10];
-						num10++;
-					}
-				}
-				array3 = this.TrimExtension(array3, SubtitleImage.Side.Right);
-				if (array3 != null)
-				{
-					array = this.CombineArrays(array, array3);
-					rect.Width += array3.GetLength(1);
-				}
-			}
-			if (lastSpace.Type == Space.SpaceType.TopLeft)
-			{
-				int num11 = Math.Min(rect.Left, (int)((double)lastSpace.SlopeStart * -lastSpace.Angle) + 1);
-				byte[,] array4 = new byte[rect.Height, num11];
-				for (int num12 = 0; num12 < nextSpace.SlopeStart; num12++)
-				{
-					int num13 = 0;
-					while (num13 < (int)Math.Round((double)num11 + (double)(lastSpace.SlopeStart - num12) * lastSpace.Angle) && num13 < num11)
-					{
-						array4[num12, num13] = this.subtitleArray[rect.Top + num12, rect.Left - num11 + num13];
-						num13++;
-					}
-				}
-				array4 = this.TrimExtension(array4, SubtitleImage.Side.Left);
-				if (array4 != null)
-				{
-					array = this.CombineArrays(array4, array);
-					rect.Width += array4.GetLength(1);
-					rect.X -= array4.GetLength(1);
-				}
-			}
-			if (lastSpace.Type == Space.SpaceType.BottomLeft)
-			{
-				int num14 = Math.Min(rect.Left, (int)((double)(rect.Height - lastSpace.SlopeStart) * lastSpace.Angle) + 1);
-				byte[,] array5 = new byte[rect.Height, num14];
-				for (int num15 = lastSpace.SlopeStart; num15 < rect.Height; num15++)
-				{
-					int num16 = 1;
-					while (num16 <= (int)Math.Round((double)(num15 - lastSpace.SlopeStart) * lastSpace.Angle) && num16 < num14)
-					{
-						array5[num15, num14 - num16] = this.subtitleArray[rect.Top + num15, rect.Left - num16];
-						num16++;
-					}
-				}
-				array5 = this.TrimExtension(array5, SubtitleImage.Side.Left);
-				if (array5 != null)
-				{
-					array = this.CombineArrays(array5, array);
-					rect.Width += array5.GetLength(1);
-					rect.X -= array5.GetLength(1);
-				}
-			}
-			int num17 = 0;
-			while (num17 < rect.Height && !this.LineContainsPixels(array, num17, 0, rect.Width))
-			{
-				num17++;
-			}
-			if (num17 == rect.Height)
-			{
-				return null;
-			}
-			int num18 = num17;
-			num17 = rect.Height - 1;
-			while (!this.LineContainsPixels(array, num17, 0, rect.Width))
-			{
-				num17--;
-			}
-			int num19 = num17 + 1;
-			byte[,] array6 = new byte[num19 - num18, array.GetLength(1)];
-			for (int num20 = 0; num20 < num19 - num18; num20++)
-			{
-				for (int num21 = 0; num21 < array.GetLength(1); num21++)
-				{
-					array6[num20, num21] = array[num20 + num18, num21];
-				}
-			}
-			rect.Y += num18;
-			rect.Height -= num18 - num19 + rect.Height;
-			return new SubtitleLetter(array6, rect, angle);
-		}
-		public Bitmap GetSubtitlePart(Rectangle rect)
-		{
-			Bitmap bitmap = new Bitmap(rect.Width + 6, rect.Height + 6);
-			Graphics graphics = Graphics.FromImage(bitmap);
-			graphics.FillRectangle(new SolidBrush(Color.Black), 0, 0, bitmap.Width, bitmap.Height);
-			graphics.DrawImage(this.subtitleBitmap, 3, 3, rect, GraphicsUnit.Pixel);
-			graphics.Dispose();
-			return bitmap;
-		}
+
 		public Bitmap GetBitmap()
 		{
 			int num = this.subtitleBitmap.Height;
@@ -1187,9 +753,10 @@ namespace SupRip
 			{
 				for (int j = 0; j < num2; j++)
 				{
-					array[num3++] = this.subtitleArray[i, j];
-					array[num3++] = this.subtitleArray[i, j];
-					array[num3++] = this.subtitleArray[i, j];
+					byte level = this.subtitleArray[i, j];
+					array[num3++] = level;
+					array[num3++] = level;
+					array[num3++] = level;
 					array[num3++] = 255;
 				}
 			}
@@ -1222,10 +789,7 @@ namespace SupRip
 				}
 				subtitleLetter = current;
 			}
-			foreach (SubtitleLetter current2 in linkedList)
-			{
-				this.letters.Remove(current2);
-			}
+			this.letters = this.letters.Where(letter => !linkedList.Contains(letter)).ToArray();
 		}
 	}
 }

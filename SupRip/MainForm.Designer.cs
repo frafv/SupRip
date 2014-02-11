@@ -52,6 +52,7 @@
 			this.srtTextBox = new System.Windows.Forms.TextBox();
 			this.saveButton = new System.Windows.Forms.Button();
 			this.imagePage = new System.Windows.Forms.TabPage();
+			this.debugLabel = new System.Windows.Forms.Label();
 			this.italicLetter = new System.Windows.Forms.CheckBox();
 			this.subtitleTextBox2 = new System.Windows.Forms.RichTextBox();
 			this.startCharacterMap = new System.Windows.Forms.Button();
@@ -76,12 +77,21 @@
 			this.letterOKButton = new System.Windows.Forms.Button();
 			this.letterInputBox = new System.Windows.Forms.TextBox();
 			this.mainTabControl = new System.Windows.Forms.TabControl();
+			this.fontPage = new System.Windows.Forms.TabPage();
+			this.pictureBoxLetter = new System.Windows.Forms.PictureBox();
+			this.listLetters = new System.Windows.Forms.ListView();
+			this.columnLetter = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
+			this.columnSize = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
+			this.columnUnicode = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
+			this.cbFonts = new System.Windows.Forms.ComboBox();
 			this.subtitleType = new System.Windows.Forms.Label();
 			this.label9 = new System.Windows.Forms.Label();
 			this.debugButton = new System.Windows.Forms.Button();
 			this.label10 = new System.Windows.Forms.Label();
 			this.fontName = new System.Windows.Forms.Label();
 			this.toolTip = new System.Windows.Forms.ToolTip(this.components);
+			this.dbgSpace = new System.Windows.Forms.CheckBox();
+			this.dbgEdges = new System.Windows.Forms.CheckBox();
 			this.srtPage.SuspendLayout();
 			this.groupBox3.SuspendLayout();
 			this.groupBox2.SuspendLayout();
@@ -90,6 +100,8 @@
 			this.groupBox1.SuspendLayout();
 			((System.ComponentModel.ISupportInitialize)(this.subtitlePictureBox)).BeginInit();
 			this.mainTabControl.SuspendLayout();
+			this.fontPage.SuspendLayout();
+			((System.ComponentModel.ISupportInitialize)(this.pictureBoxLetter)).BeginInit();
 			this.SuspendLayout();
 			// 
 			// loadButton
@@ -236,6 +248,7 @@
 			// 
 			// imagePage
 			// 
+			this.imagePage.Controls.Add(this.debugLabel);
 			this.imagePage.Controls.Add(this.italicLetter);
 			this.imagePage.Controls.Add(this.subtitleTextBox2);
 			this.imagePage.Controls.Add(this.startCharacterMap);
@@ -254,11 +267,15 @@
 			this.imagePage.Name = "imagePage";
 			this.imagePage.Paint += new System.Windows.Forms.PaintEventHandler(this.imagePage_Paint);
 			// 
+			// debugLabel
+			// 
+			resources.ApplyResources(this.debugLabel, "debugLabel");
+			this.debugLabel.Name = "debugLabel";
+			// 
 			// italicLetter
 			// 
 			resources.ApplyResources(this.italicLetter, "italicLetter");
 			this.italicLetter.Name = "italicLetter";
-			this.italicLetter.CheckedChanged += new System.EventHandler(this.italicLetter_CheckedChanged);
 			// 
 			// subtitleTextBox2
 			// 
@@ -410,9 +427,57 @@
 			resources.ApplyResources(this.mainTabControl, "mainTabControl");
 			this.mainTabControl.Controls.Add(this.imagePage);
 			this.mainTabControl.Controls.Add(this.srtPage);
+			this.mainTabControl.Controls.Add(this.fontPage);
 			this.mainTabControl.Name = "mainTabControl";
 			this.mainTabControl.SelectedIndex = 0;
 			this.mainTabControl.Click += new System.EventHandler(this.mainTabControl_Click);
+			// 
+			// fontPage
+			// 
+			this.fontPage.Controls.Add(this.pictureBoxLetter);
+			this.fontPage.Controls.Add(this.listLetters);
+			this.fontPage.Controls.Add(this.cbFonts);
+			resources.ApplyResources(this.fontPage, "fontPage");
+			this.fontPage.Name = "fontPage";
+			// 
+			// pictureBoxLetter
+			// 
+			resources.ApplyResources(this.pictureBoxLetter, "pictureBoxLetter");
+			this.pictureBoxLetter.Name = "pictureBoxLetter";
+			this.pictureBoxLetter.TabStop = false;
+			// 
+			// listLetters
+			// 
+			resources.ApplyResources(this.listLetters, "listLetters");
+			this.listLetters.Columns.AddRange(new System.Windows.Forms.ColumnHeader[] {
+            this.columnLetter,
+            this.columnSize,
+            this.columnUnicode});
+			this.listLetters.FullRowSelect = true;
+			this.listLetters.Name = "listLetters";
+			this.listLetters.UseCompatibleStateImageBehavior = false;
+			this.listLetters.View = System.Windows.Forms.View.Details;
+			this.listLetters.SelectedIndexChanged += new System.EventHandler(this.listLetters_SelectedIndexChanged);
+			// 
+			// columnLetter
+			// 
+			resources.ApplyResources(this.columnLetter, "columnLetter");
+			// 
+			// columnSize
+			// 
+			resources.ApplyResources(this.columnSize, "columnSize");
+			// 
+			// columnUnicode
+			// 
+			resources.ApplyResources(this.columnUnicode, "columnUnicode");
+			// 
+			// cbFonts
+			// 
+			this.cbFonts.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+			this.cbFonts.FormattingEnabled = true;
+			resources.ApplyResources(this.cbFonts, "cbFonts");
+			this.cbFonts.Name = "cbFonts";
+			this.cbFonts.SelectedIndexChanged += new System.EventHandler(this.cbFonts_SelectedIndexChanged);
 			// 
 			// subtitleType
 			// 
@@ -446,10 +511,26 @@
 			this.toolTip.InitialDelay = 500;
 			this.toolTip.ReshowDelay = 100;
 			// 
+			// dbgSpace
+			// 
+			resources.ApplyResources(this.dbgSpace, "dbgSpace");
+			this.dbgSpace.Name = "dbgSpace";
+			this.dbgSpace.UseVisualStyleBackColor = true;
+			this.dbgSpace.CheckedChanged += new System.EventHandler(this.dbgSpace_CheckedChanged);
+			// 
+			// dbgEdges
+			// 
+			resources.ApplyResources(this.dbgEdges, "dbgEdges");
+			this.dbgEdges.Name = "dbgEdges";
+			this.dbgEdges.UseVisualStyleBackColor = true;
+			this.dbgEdges.CheckedChanged += new System.EventHandler(this.dbgSpace_CheckedChanged);
+			// 
 			// MainForm
 			// 
 			resources.ApplyResources(this, "$this");
 			this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
+			this.Controls.Add(this.dbgEdges);
+			this.Controls.Add(this.dbgSpace);
 			this.Controls.Add(this.fontName);
 			this.Controls.Add(this.debugButton);
 			this.Controls.Add(this.label10);
@@ -475,6 +556,8 @@
 			this.groupBox1.PerformLayout();
 			((System.ComponentModel.ISupportInitialize)(this.subtitlePictureBox)).EndInit();
 			this.mainTabControl.ResumeLayout(false);
+			this.fontPage.ResumeLayout(false);
+			((System.ComponentModel.ISupportInitialize)(this.pictureBoxLetter)).EndInit();
 			this.ResumeLayout(false);
 			this.PerformLayout();
 
@@ -534,5 +617,15 @@
 		private System.Windows.Forms.Label fontName;
 		private System.Windows.Forms.CheckBox italicLetter;
 		private System.Windows.Forms.ToolTip toolTip;
+		private System.Windows.Forms.TabPage fontPage;
+		private System.Windows.Forms.ComboBox cbFonts;
+		private System.Windows.Forms.PictureBox pictureBoxLetter;
+		private System.Windows.Forms.ListView listLetters;
+		private System.Windows.Forms.ColumnHeader columnLetter;
+		private System.Windows.Forms.ColumnHeader columnSize;
+		private System.Windows.Forms.ColumnHeader columnUnicode;
+		private System.Windows.Forms.CheckBox dbgSpace;
+		private System.Windows.Forms.CheckBox dbgEdges;
+		private System.Windows.Forms.Label debugLabel;
 	}
 }

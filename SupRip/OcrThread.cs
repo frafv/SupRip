@@ -10,13 +10,10 @@ namespace SupRip
 		private int nSubtitles;
 		private int startingSubtitle;
 		private bool reportUnknownChar;
-		private int foundNum;
 		public int FoundNum
 		{
-			get
-			{
-				return this.foundNum;
-			}
+			get;
+			private set;
 		}
 		public OcrThread(MainForm f, ManualResetEvent se, ManualResetEvent fe, int n)
 		{
@@ -34,7 +31,7 @@ namespace SupRip
 			this.nSubtitles = n;
 			this.startingSubtitle = start;
 			this.reportUnknownChar = true;
-			this.foundNum = -1;
+			this.FoundNum = -1;
 		}
 		public void Run()
 		{
@@ -58,7 +55,7 @@ namespace SupRip
 						}
 						catch (UnknownCharacterException)
 						{
-							this.foundNum = i;
+							this.FoundNum = i;
 							break;
 						}
 					}

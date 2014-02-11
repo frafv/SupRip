@@ -4,26 +4,20 @@ namespace SupRip
 {
 	internal class PositionedString
 	{
-		private Rectangle position;
-		private string str;
-		public Rectangle Position
+		public RectangleF Position
 		{
-			get
-			{
-				return this.position;
-			}
+			get;
+			private set;
 		}
 		public string Str
 		{
-			get
-			{
-				return this.str;
-			}
+			get;
+			private set;
 		}
-		public PositionedString(Rectangle p, string s)
+		public PositionedString(RectangleF p, string s)
 		{
-			this.position = p;
-			this.str = s;
+			this.Position = p;
+			this.Str = s;
 		}
 	}
 }

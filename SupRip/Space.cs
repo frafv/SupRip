@@ -1,118 +1,93 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
+
 namespace SupRip
 {
 	internal class Space
 	{
-		public enum SpaceType
-		{
-			Straight,
-			TopRight,
-			TopLeft,
-			BottomRight,
-			BottomLeft
-		}
-		private Rectangle rect;
-		private bool partial;
-		private Space.SpaceType type;
-		private double angle;
-		private int slopeStart;
+		public const float smoothStep = 0.5f;
+
 		public Rectangle Rect
 		{
-			get
-			{
-				return this.rect;
-			}
+			get;
+			private set;
 		}
-		public Space.SpaceType Type
+
+		public float[] Left
 		{
-			get
-			{
-				return this.type;
-			}
+			get;
+			private set;
 		}
-		public double Angle
+
+		public float[] Right
 		{
-			get
-			{
-				return this.angle;
-			}
+			get;
+			private set;
 		}
-		public int SlopeStart
+
+		public int Height
 		{
-			get
-			{
-				return this.slopeStart;
-			}
+			get { return this.Left.Length; }
 		}
-		public bool Partial
-		{
-			get
-			{
-				return this.partial;
-			}
-			set
-			{
-				this.partial = value;
-			}
-		}
+
 		public int Hash
 		{
 			get
 			{
-				return this.rect.Left * 1000 + this.rect.Top;
+				return this.Rect.Left * 1000 + this.Rect.Top;
 			}
 		}
-		public Space(Rectangle rect) : this(rect, false)
+
+		public Space(Rectangle rect)
 		{
+			this.Rect = rect;
 		}
-		public Space(Rectangle rect, bool isPartial)
+
+		public Space(int left, int top, int width, int height)
 		{
-			this.rect = rect;
-			this.partial = isPartial;
+			this.Rect = new Rectangle(left, top, width, height);
 		}
-		public Space(int left, int top, int width, int height, bool isPartial)
+
+		public Space(int height)
 		{
-			this.rect = new Rectangle(left, top, width, height);
-			this.partial = isPartial;
+			this.Left = new float[height];
+			this.Right = new float[height];
 		}
-		public Space(int left, int top, int width, int height, bool isPartial, Space.SpaceType t, int slope, double a) : this(left, top, width, height, isPartial)
+
+		public void SetRange(int line, float left, float right)
 		{
-			this.type = t;
-			this.angle = a;
-			this.slopeStart = slope;
+			this.Left[line] = left;
+			this.Right[line] = right;
 		}
-		public Space(int left, int top, int width, int height) : this(left, top, width, height, false)
+
+		public void CopyTo(Space dest, int start, int length)
 		{
+			Array.Copy(this.Left, start, dest.Left, start, length);
+			Array.Copy(this.Right, start, dest.Right, start, length);
 		}
-		public void Resize(int left, int top, int right, int bottom)
+
+		internal void LeftSmooth(float left, int line)
 		{
-			this.rect.X = this.rect.X - left;
-			this.rect.Width = this.rect.Width + (left + right);
-			this.rect.Y = this.rect.Y - top;
-			this.rect.Height = this.rect.Height + (top + bottom);
-		}
-		public override string ToString()
-		{
-			string text = "";
-			if (this.partial)
+			float l = left;
+			for (int i = line - 1; i >= 0; i--)
 			{
-				text = "partial ";
+				l -= smoothStep;
+				if (this.Left[i] >= l)
+					return;
+				this.Left[i] = l;
 			}
-			switch (this.type)
+		}
+
+		internal void RightSmooth(float right, int line)
+		{
+			float r = right;
+			for (int i = line - 1; i >= 0; i--)
 			{
-			case Space.SpaceType.Straight:
-				return text + "straight";
-			case Space.SpaceType.TopRight:
-				return text + "topright";
-			case Space.SpaceType.TopLeft:
-				return text + "topleft";
-			case Space.SpaceType.BottomRight:
-				return text + "bottomright";
-			case Space.SpaceType.BottomLeft:
-				return text + "bottomleft";
-			default:
-				return text;
+				r += smoothStep;
+				if (this.Right[i] <= r)
+					return;
+				this.Right[i] = r;
 			}
 		}
 	}

@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Windows.Forms;
+
 namespace SupRip
 {
 	internal class SubtitleFont
@@ -11,37 +13,35 @@ namespace SupRip
 			ProgramFont = 1,
 			UserFont
 		}
-		private LinkedList<SubtitleLetter> letters;
+		private List<SubtitleLetter> letters;
 		private SubtitleFont.FontType type;
-		private string fontName;
 		private string fileName;
-		private bool changed;
 		public string Name
 		{
-			get
-			{
-				return this.fontName;
-			}
+			get;
+			private set;
 		}
 		public bool Changed
 		{
-			get
-			{
-				return this.changed;
-			}
+			get;
+			private set;
+		}
+		internal IEnumerable<SubtitleLetter> AllLetters
+		{
+			get { return this.letters; }
 		}
 		public SubtitleFont(SubtitleFont.FontType t, string fn)
 		{
 			this.type = t;
-			this.fontName = fn;
-			this.letters = new LinkedList<SubtitleLetter>();
+			this.Name = fn;
+			this.letters = new List<SubtitleLetter>();
 			if (this.type == SubtitleFont.FontType.ProgramFont)
 			{
-				this.fileName = Application.StartupPath + "\\" + this.fontName + ".font.txt";
+				this.fileName = Application.StartupPath + "\\" + this.Name + ".font.txt";
 			}
 			else
 			{
-				this.fileName = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) + "\\SupRip\\" + this.fontName + ".font.txt";
+				this.fileName = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) + "\\SupRip\\" + this.Name + ".font.txt";
 			}
 			if (File.Exists(this.fileName))
 			{
@@ -81,7 +81,7 @@ namespace SupRip
 							array2[i, j] = byte.Parse(array3[j]);
 						}
 					}
-					this.letters.AddLast(new SubtitleLetter(array2, s));
+					this.letters.Add(new SubtitleLetter(array2, s));
 					streamReader.ReadLine();
 				}
 				streamReader.Close();
@@ -89,38 +89,19 @@ namespace SupRip
 		}
 		public void MoveLetters(SubtitleFont target)
 		{
-			foreach (SubtitleLetter current in this.letters)
-			{
-				target.AddLetter(current);
-			}
+			target.letters.AddRange(this.letters);
 			this.letters.Clear();
-			this.changed = true;
+			this.Changed = true;
 		}
 		public void AddLetter(SubtitleLetter l)
 		{
-			this.changed = true;
-			this.letters.AddLast(l);
+			this.Changed = true;
+			this.letters.Add(l);
 		}
 		public string ListDuplicates()
 		{
-			string text = "";
-			string[] array = new string[this.letters.Count];
-			int num = 0;
-			foreach (SubtitleLetter current in this.letters)
-			{
-				array[num++] = current.Text;
-			}
-			for (int i = 0; i < this.letters.Count; i++)
-			{
-				for (int j = i + 1; j < this.letters.Count; j++)
-				{
-					if (array[j] == array[i])
-					{
-						text = text + " " + array[j];
-					}
-				}
-			}
-			return text;
+			return String.Join(" ", this.letters.Select(letter => letter.Text).GroupBy(text => text)
+				.Where(group => group.Count() > 1).Select(group => group.Key));
 		}
 		public SortedList<int, SubtitleLetter> FindMatch(SubtitleLetter l, int tolerance)
 		{
@@ -170,12 +151,12 @@ namespace SupRip
 		}
 		public void DeleteLetter(SubtitleLetter l2)
 		{
-			this.changed = true;
+			this.Changed = true;
 			this.letters.Remove(l2);
 		}
 		public static void DeleteUserFont(string name)
 		{
-			string path = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) + "\\SupRip\\" + name + ".font.txt";
+			string path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "SupRip", name + ".font.txt");
 			File.Delete(path);
 		}
 	}

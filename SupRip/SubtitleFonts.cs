@@ -2,14 +2,16 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+
 namespace SupRip
 {
 	internal class SubtitleFonts
 	{
-		private LinkedList<SubtitleFont> fonts;
+		private List<SubtitleFont> fonts;
 		private SubtitleFont defaultFont;
 		private SubtitleFont userFont;
-		private Hashtable fontStats;
+		private IDictionary<string, int> fontStats;
 		public LinkedList<PositionedString> debugStrings;
 		public string DefaultFontName
 		{
@@ -31,9 +33,9 @@ namespace SupRip
 		}
 		public SubtitleFonts()
 		{
-			this.fonts = new LinkedList<SubtitleFont>();
+			this.fonts = new List<SubtitleFont>();
 			this.defaultFont = null;
-			this.fontStats = new Hashtable();
+			this.fontStats = new Dictionary<string, int>();
 			this.debugStrings = new LinkedList<PositionedString>();
 			DirectoryInfo directoryInfo = new DirectoryInfo(".");
 			FileInfo[] files = directoryInfo.GetFiles("*.font.txt");
@@ -44,7 +46,7 @@ namespace SupRip
 				string text = fileInfo.Name;
 				text = text.Substring(0, text.LastIndexOf('.'));
 				text = text.Substring(0, text.LastIndexOf('.'));
-				this.fonts.AddLast(new SubtitleFont(SubtitleFont.FontType.ProgramFont, text));
+				this.fonts.Add(new SubtitleFont(SubtitleFont.FontType.ProgramFont, text));
 			}
 			try
 			{
@@ -58,13 +60,7 @@ namespace SupRip
 		}
 		public string[] FontList()
 		{
-			string[] array = new string[this.fonts.Count];
-			int num = 0;
-			foreach (SubtitleFont current in this.fonts)
-			{
-				array[num++] = current.Name;
-			}
-			return array;
+			return this.fonts.Select(font => font.Name).ToArray();
 		}
 		public void Save()
 		{
@@ -84,11 +80,11 @@ namespace SupRip
 		{
 			if (this.defaultFont == null)
 			{
-				foreach (DictionaryEntry dictionaryEntry in this.fontStats)
+				foreach (var dictionaryEntry in this.fontStats)
 				{
-					if ((int)dictionaryEntry.Value > 10)
+					if (dictionaryEntry.Value > 10)
 					{
-						this.SetDefaultFont((string)dictionaryEntry.Key);
+						this.SetDefaultFont(dictionaryEntry.Key);
 					}
 				}
 			}
@@ -121,14 +117,10 @@ namespace SupRip
 					}
 					if (sortedList4.Count > 0)
 					{
-						if (this.fontStats[current.Name] == null)
-						{
-							this.fontStats[current.Name] = 1;
-						}
-						else
-						{
-							this.fontStats[current.Name] = (int)this.fontStats[current.Name] + 1;
-						}
+						int count;
+						if (!this.fontStats.TryGetValue(current.Name, out count))
+							count = 0;
+						this.fontStats[current.Name] = count + 1;
 					}
 				}
 			}
@@ -145,15 +137,10 @@ namespace SupRip
 		}
 		private void SetDefaultFont(string name)
 		{
-			foreach (SubtitleFont current in this.fonts)
-			{
-				if (current.Name == name)
-				{
-					this.defaultFont = current;
-					return;
-				}
-			}
-			throw new Exception("Trying to set an unknown font as default");
+			var defaultFont = this.fonts.FirstOrDefault(font => font.Name == name);
+			if (defaultFont == null)
+				throw new Exception("Trying to set an unknown font as default");
+			this.defaultFont = defaultFont;
 		}
 		public string ListDuplicates()
 		{
@@ -170,20 +157,17 @@ namespace SupRip
 		}
 		public void MergeUserFont(string targetFontName)
 		{
-			SubtitleFont subtitleFont = null;
-			foreach (SubtitleFont current in this.fonts)
-			{
-				if (current.Name == targetFontName)
-				{
-					subtitleFont = current;
-					break;
-				}
-			}
+			SubtitleFont subtitleFont = this.fonts.FirstOrDefault(font => font.Name == targetFontName);
 			if (subtitleFont == null)
-			{
 				throw new Exception("invalid font name for merge fonts");
-			}
 			this.userFont.MoveLetters(subtitleFont);
+		}
+		public IEnumerable<SubtitleLetter> FontLetters(string name)
+		{
+			var subtitleFont = this.fonts.FirstOrDefault(font => font.Name == name);
+			if (subtitleFont == null)
+				throw new Exception("Trying to set an unknown font as default");
+			return subtitleFont.AllLetters;
 		}
 	}
 }
