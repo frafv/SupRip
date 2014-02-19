@@ -169,9 +169,9 @@ namespace SupRip
 		private void MoveToImage(int num)
 		{
 			this.fontName.Text = this.fonts.DefaultFontName;
-			if (SubtitleImage.italicAngle.HasValue)
+			if (!Double.IsNaN(SubtitleImage.italicAngle))
 			{
-				this.fontName.Text += String.Format(" (Italic = {0:0.0}°)", 90.0 - Math.Atan(SubtitleImage.italicAngle.Value) * 180.0 / Math.PI);
+				this.fontName.Text += String.Format(" (Italic = {0:0.0}°)", 90.0 - Math.Atan(SubtitleImage.italicAngle) * 180.0 / Math.PI);
 			}
 			if (this.currentSubtitle != null && num != this.currentNum)
 			{
@@ -253,40 +253,38 @@ namespace SupRip
 				return;
 			}
 			this.fonts.debugStrings.Clear();
-			foreach (SubtitleLetter current in si.letters)
+			si.letters.Where(current => current.Text == null).AsParallel().ForAll(current =>
 			{
-				if (current.Text == null)
+				DateTime now = DateTime.Now;
+				SubtitleLetter subtitleLetter = this.fonts.FindMatch(current,
+					current.Angle == 0.0 ? AppOptions.similarityTolerance * 100 : AppOptions.similarityTolerance * 1000);
+				Debugger.scanTime += (DateTime.Now - now).TotalMilliseconds;
+				if (subtitleLetter != null)
 				{
-					DateTime now = DateTime.Now;
-					SubtitleLetter subtitleLetter = this.fonts.FindMatch(current, AppOptions.similarityTolerance * 100);
-					Debugger.scanTime += (DateTime.Now - now).TotalMilliseconds;
-					if (subtitleLetter != null)
+					if (AppOptions.replaceHighCommas && current.Height < -10 && subtitleLetter.Text.Equals(","))
 					{
-						if (AppOptions.replaceHighCommas && current.Height < -10 && subtitleLetter.Text.Equals(","))
-						{
-							current.Text = "'";
-						}
-						else
-						{
-							if (AppOptions.replaceHighCommas && current.Height > 10 && subtitleLetter.Text.Equals("'"))
-							{
-								current.Text = ",";
-							}
-							else
-							{
-								current.Text = subtitleLetter.Text;
-							}
-						}
+						current.Text = "'";
 					}
 					else
 					{
-						if (reportUnknownCharacter)
+						if (AppOptions.replaceHighCommas && current.Height > 10 && subtitleLetter.Text.Equals("'"))
 						{
-							throw new UnknownCharacterException();
+							current.Text = ",";
+						}
+						else
+						{
+							current.Text = subtitleLetter.Text;
 						}
 					}
 				}
-			}
+				else
+				{
+					if (reportUnknownCharacter)
+					{
+						throw new UnknownCharacterException();
+					}
+				}
+			});
 		}
 		public void ImageOCR(int n, bool reportUnknownCharacter = false)
 		{
@@ -396,7 +394,7 @@ namespace SupRip
 			}
 			else
 			{
-				this.activeLetter.Angle = italicLetter.Checked ? (SubtitleImage.italicAngle ?? 1.0/6.0) : 0.0;
+				this.activeLetter.Angle = italicLetter.Checked ? Double.IsNaN(SubtitleImage.italicAngle) ? 1.0 / 6.0 : SubtitleImage.italicAngle : 0.0;
 				//this.activeLetter.ApplyAngle();
 				this.AssignLetterText(this.activeLetter, this.letterInputBox.Text);
 			}
@@ -476,8 +474,8 @@ namespace SupRip
 						}
 					}
 					var coords = current.Coords;
-					graphics.DrawLine(pen, current.LeftTopPoint, current.LeftBottomPoint);
-					graphics.DrawLine(pen, current.RightTopPoint, current.RightBottomPoint);
+					graphics.DrawLine(pen, current.LeftTop, coords.Top, current.LeftBottom, coords.Bottom - 1.0f);
+					graphics.DrawLine(pen, current.RightTop, coords.Top, current.RightBottom, coords.Bottom - 1.0f);
 					graphics.DrawLine(pen, current.LeftTop, coords.Top - 1.0f, current.RightTop, coords.Top - 1.0f);
 					graphics.DrawLine(pen, current.LeftBottom, coords.Bottom, current.RightBottom, coords.Bottom);
 				}
@@ -515,8 +513,24 @@ namespace SupRip
 			this.subtitlePictureBox.Image = bitmap;
 			if (this.activeLetter != null)
 			{
-				this.letterPictureBox.Image = this.activeLetter.GetBitmap();
+				var bitmap2 = this.activeLetter.GetBitmap();
+				this.letterPictureBox.Image = bitmap2;
 				this.letterOKButton.Enabled = (this.letterPictureBox.Image != null);
+#if DEBUG
+				if (this.dbgEdges.Checked && bitmap2.Width >= 8 && bitmap2.Height >= 8)
+				{
+					Graphics graphics2 = Graphics.FromImage(bitmap2);
+					float size = 8.0f;
+					for (float x = bitmap2.Width / size; x < bitmap2.Width; x += bitmap2.Width / size)
+					{
+						graphics2.DrawLine(greenPen, x, 0.0f, x, bitmap2.Height);
+					}
+					for (float y = bitmap2.Height / size; y < bitmap2.Height; y += bitmap2.Height / size)
+					{
+						graphics2.DrawLine(greenPen, 0.0f, y, bitmap2.Width, y);
+					}
+				}
+#endif
 				return;
 			}
 			this.letterPictureBox.Image = null;
@@ -614,8 +628,8 @@ namespace SupRip
 				if (subtitleLetter != null)
 				{
 #if DEBUG
-					this.debugLabel.Text = String.Format("Exact angle={0:0.00}° Coords={1}, {2}pix Size={3} x {4}pix",
-						subtitleLetter.ExactAngle.HasValue ? (object)(90.0 - Math.Atan(subtitleLetter.ExactAngle.Value) * 180.0 / Math.PI) : "none",
+					this.debugLabel.Text = String.Format("Exact angle={0:0.##}° Coords={1:0.#}, {2:0.#}pix Size={3:0.#} x {4:0.#}pix",
+						!Double.IsNaN(subtitleLetter.ExactAngle) ? (object)(90.0 - Math.Atan(subtitleLetter.ExactAngle) * 180.0 / Math.PI) : "none",
 						subtitleLetter.Coords.Left, subtitleLetter.Coords.Top,
 						subtitleLetter.Coords.Width, subtitleLetter.Coords.Height);
 #endif

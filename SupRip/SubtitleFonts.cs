@@ -60,7 +60,7 @@ namespace SupRip
 		}
 		public string[] FontList()
 		{
-			return this.fonts.Select(font => font.Name).ToArray();
+			return this.fonts.Select(font => font.Name).Concat(new string[] { "User font" }).ToArray();
 		}
 		public void Save()
 		{
@@ -80,11 +80,17 @@ namespace SupRip
 		{
 			if (this.defaultFont == null)
 			{
-				foreach (var dictionaryEntry in this.fontStats)
+				lock (this.fontStats)
 				{
-					if (dictionaryEntry.Value > 10)
+					if (this.defaultFont == null)
 					{
-						this.SetDefaultFont(dictionaryEntry.Key);
+						foreach (var dictionaryEntry in this.fontStats)
+						{
+							if (dictionaryEntry.Value > 10)
+							{
+								this.SetDefaultFont(dictionaryEntry.Key);
+							}
+						}
 					}
 				}
 			}
@@ -98,7 +104,10 @@ namespace SupRip
 				SortedList<int, SubtitleLetter> sortedList2 = this.defaultFont.FindMatch(l, tolerance);
 				if (sortedList2.Count > 0)
 				{
-					this.debugStrings.AddLast(new PositionedString(l.Coords, sortedList2.Keys[0].ToString()));
+					lock (this.debugStrings)
+					{
+						this.debugStrings.AddLast(new PositionedString(l.Coords, sortedList2.Keys[0].ToString()));
+					}
 					return sortedList2.Values[0];
 				}
 			}
@@ -117,16 +126,22 @@ namespace SupRip
 					}
 					if (sortedList4.Count > 0)
 					{
-						int count;
-						if (!this.fontStats.TryGetValue(current.Name, out count))
-							count = 0;
-						this.fontStats[current.Name] = count + 1;
+						lock (this.fontStats)
+						{
+							int count;
+							if (!this.fontStats.TryGetValue(current.Name, out count))
+								count = 0;
+							this.fontStats[current.Name] = count + 1;
+						}
 					}
 				}
 			}
 			if (sortedList3.Count > 0)
 			{
-				this.debugStrings.AddLast(new PositionedString(l.Coords, sortedList3.Keys[0].ToString()));
+				lock (this.debugStrings)
+				{
+					this.debugStrings.AddLast(new PositionedString(l.Coords, sortedList3.Keys[0].ToString()));
+				}
 				return sortedList3.Values[0];
 			}
 			if (sortedList.Count > 0)
@@ -164,9 +179,9 @@ namespace SupRip
 		}
 		public IEnumerable<SubtitleLetter> FontLetters(string name)
 		{
-			var subtitleFont = this.fonts.FirstOrDefault(font => font.Name == name);
+			var subtitleFont = this.fonts.FirstOrDefault(font => font.Name == name) ?? this.userFont;
 			if (subtitleFont == null)
-				throw new Exception("Trying to set an unknown font as default");
+				throw new Exception("Trying to get unknown font letters");
 			return subtitleFont.AllLetters;
 		}
 	}

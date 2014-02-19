@@ -108,7 +108,7 @@ namespace SupRip
 			SortedList<int, SubtitleLetter> sortedList = new SortedList<int, SubtitleLetter>();
 			foreach (SubtitleLetter current in this.letters)
 			{
-				if (current.BordersMatch(l))
+				if ((l.Hash | current.FontMask) == current.FontHash)
 				{
 					int num = current.Matches(l);
 					if (num == 0)

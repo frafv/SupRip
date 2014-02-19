@@ -358,12 +358,12 @@ namespace SupRip
 				return letters;
 			}
 
-			private double? GetItalicAngle(SubtitleLetter[] letters)
+			private double GetItalicAngle(SubtitleLetter[] letters)
 			{
-				if (SubtitleImage.italicAngle.HasValue)
+				if (!Double.IsNaN(SubtitleImage.italicAngle))
 					return SubtitleImage.italicAngle;
 
-				var angles = letters.Where(letter => letter.ExactAngle.HasValue).Select(letter => letter.ExactAngle.Value).OrderBy(angle => angle).ToArray();
+				var angles = letters.Where(letter => !Double.IsNaN(letter.ExactAngle)).Select(letter => letter.ExactAngle).OrderBy(angle => angle).ToArray();
 				int k = 0;
 				double delta = 1.0 / SubtitleLetter.minAngleDiv;
 				double maxAngle = 0.0;
@@ -384,11 +384,11 @@ namespace SupRip
 					k++;
 					k += angles.Skip(k).TakeWhile(angle => angle == start).Count();
 				}
-				if (Math.Abs(maxAngle) < delta) return null;
+				if (Math.Abs(maxAngle) < delta) return Double.NaN;
 
 				lock(SubtitleImage.italicSync)
 				{
-					if (SubtitleImage.italicAngle.HasValue)
+					if (!Double.IsNaN(SubtitleImage.italicAngle))
 						return SubtitleImage.italicAngle;
 
 					SubtitleImage.angleList += maxAngle;
@@ -404,8 +404,8 @@ namespace SupRip
 
 			public void AdjustItalic(SubtitleLetter[] letters)
 			{
-				double angle = GetItalicAngle(letters) ?? 0.0;
-				if (angle == 0.0) return;
+				double angle = GetItalicAngle(letters);
+				if (angle == 0.0 || Double.IsNaN(angle)) return;
 				var italic = new List<SubtitleLetter>();
 				int wordStart = 0;
 				int canStart = letters.Length;
@@ -420,7 +420,7 @@ namespace SupRip
 						wordStart = k + 1;
 						continue;
 					}
-					if (((letter.ExactAngle ?? 0.0) == 0.0) || Math.Abs(letter.ExactAngle.Value - angle) >= 1.0 / SubtitleLetter.minAngleDiv)
+					if (Double.IsNaN(letter.ExactAngle) || letter.ExactAngle == 0.0 || Math.Abs(letter.ExactAngle - angle) >= 1.0 / SubtitleLetter.minAngleDiv)
 					{
 						if (letter.ExactAngle == 0.0)
 							hasRegilar = true;
@@ -435,8 +435,8 @@ namespace SupRip
 						wordEnd = n;
 					}
 					var word = letters.Skip(wordStart).Take(wordEnd - wordStart + 1).ToArray();
-					int count1 = word.Count(l => l.ExactAngle.HasValue && Math.Abs(l.ExactAngle.Value) < 1.0 / SubtitleLetter.minAngleDiv);
-					int count2 = word.Count(l => l.ExactAngle.HasValue && Math.Abs(l.ExactAngle.Value - angle) < 1.0 / SubtitleLetter.minAngleDiv);
+					int count1 = word.Count(l => !Double.IsNaN(l.ExactAngle) && Math.Abs(l.ExactAngle) < 1.0 / SubtitleLetter.minAngleDiv);
+					int count2 = word.Count(l => !Double.IsNaN(l.ExactAngle) && Math.Abs(l.ExactAngle - angle) < 1.0 / SubtitleLetter.minAngleDiv);
 					if (count2 > count1)
 					{
 						if (canStart < wordStart)
@@ -481,7 +481,7 @@ namespace SupRip
 		private static double angleList;
 		private static int angleCount;
 		private static object italicSync = new object();
-		public static double? italicAngle;
+		public static double italicAngle = Double.NaN;
 		public SubtitleImage(Bitmap source)
 		{
 			this.subtitleBitmap = new Bitmap(source.Width + 20, source.Height, PixelFormat.Format32bppArgb);

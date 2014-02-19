@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Linq;
+using System.Linq.Expressions;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -13,13 +15,273 @@ namespace SupRip
 	/// </summary>
 	internal class SubtitleLetter
 	{
+		private static class HashManager
+		{
+			public delegate void HashLine(byte[,] image, int i, double[] line);
+			public delegate void HashImage(byte[,] image, double[] line1, double[] line2, byte[] hash, HashLine line);
+
+			private static IDictionary<int, HashLine> lines = new Dictionary<int, HashLine>();
+			private static IDictionary<int, HashImage> images = new Dictionary<int, HashImage>();
+
+			private static HashLine BuildHashLine(int width, double offset)
+			{
+				var imageArg = Expression.Parameter(typeof(byte[,]), "image");
+				var iArg = Expression.Parameter(typeof(int), "i");
+				var lineArg = Expression.Parameter(typeof(double[]), "line");
+				Func<int, Type, Expression> image = (j, type) =>
+					Expression.Convert(Expression.ArrayAccess(imageArg, iArg, Expression.Constant(j)), type);
+				var lines = new Expression[8];
+				double start = 0.0;
+				for (int k = 0; k < 8; k++)
+				{
+					double end = (width * (k + 1)) / 8.0;
+					if (k < 7) end += offset;
+					double istart = Math.Ceiling(start);
+					double iend = Math.Floor(end);
+					Expression sum = null;
+					if (iend > istart)
+					{
+						sum = image((int)istart, typeof(int));
+						for (int n = (int)istart + 1; n < (int)iend; n++)
+							sum = Expression.Add(sum, image(n, typeof(int)));
+						sum = Expression.Convert(sum, typeof(double));
+					}
+					if (start != istart)
+					{
+						var mul = Expression.Multiply(image((int)istart - 1, typeof(double)),
+							Expression.Constant(istart - start));
+						sum = sum == null ? mul : Expression.Add(mul, sum);
+					}
+					if (end != iend)
+					{
+						var mul = Expression.Multiply(image((int)iend, typeof(double)),
+							Expression.Constant(end - iend));
+						sum = sum == null ? mul : Expression.Add(sum, mul);
+					}
+					lines[k] = Expression.Assign(Expression.ArrayAccess(lineArg, Expression.Constant(k)),
+						Expression.Divide(sum, Expression.Constant(end - start)));
+					start = end;
+				}
+				var expr = Expression.Block(lines);
+				var lambda = Expression.Lambda<HashLine>(expr, imageArg, iArg, lineArg);
+				return lambda.Compile();
+			}
+
+			/// <summary>
+			/// A += B
+			/// </summary>
+			/// <param name="A">Vector A</param>
+			/// <param name="B">Vector B</param>
+			private static void Add(double[] A, double[] B)
+			{
+				A[0] += B[0];
+				A[1] += B[1];
+				A[2] += B[2];
+				A[3] += B[3];
+				A[4] += B[4];
+				A[5] += B[5];
+				A[6] += B[6];
+				A[7] += B[7];
+			}
+
+			/// <summary>
+			/// A += B * C
+			/// </summary>
+			/// <param name="A">Vector A</param>
+			/// <param name="B">Vector B</param>
+			/// <param name="C">Constant C</param>
+			private static void AddMul(double[] A, double[] B, double C)
+			{
+				A[0] += B[0] * C;
+				A[1] += B[1] * C;
+				A[2] += B[2] * C;
+				A[3] += B[3] * C;
+				A[4] += B[4] * C;
+				A[5] += B[5] * C;
+				A[6] += B[6] * C;
+				A[7] += B[7] * C;
+			}
+
+			/// <summary>
+			/// A = B * C
+			/// </summary>
+			/// <param name="A">Vector A</param>
+			/// <param name="B">Vector B</param>
+			/// <param name="C">Constant C</param>
+			private static void Mul(double[] A, double[] B, double C)
+			{
+				A[0] = B[0] * C;
+				A[1] = B[1] * C;
+				A[2] = B[2] * C;
+				A[3] = B[3] * C;
+				A[4] = B[4] * C;
+				A[5] = B[5] * C;
+				A[6] = B[6] * C;
+				A[7] = B[7] * C;
+			}
+
+			private static byte HashByte(double[] line, double C)
+			{
+				byte b = 0;
+				if (line[0] > SubtitleImage.pixelLimitAsSet * C) b |= 1;
+				if (line[1] > SubtitleImage.pixelLimitAsSet * C) b |= 2;
+				if (line[2] > SubtitleImage.pixelLimitAsSet * C) b |= 4;
+				if (line[3] > SubtitleImage.pixelLimitAsSet * C) b |= 8;
+				if (line[4] > SubtitleImage.pixelLimitAsSet * C) b |= 16;
+				if (line[5] > SubtitleImage.pixelLimitAsSet * C) b |= 32;
+				if (line[6] > SubtitleImage.pixelLimitAsSet * C) b |= 64;
+				if (line[7] > SubtitleImage.pixelLimitAsSet * C) b |= 128;
+				return b;
+			}
+
+			private static HashImage BuildHashImage(int height, double offset)
+			{
+				MethodInfo miAdd = new MethodOf<Action<double[], double[]>>(Add);
+				MethodInfo miAddMul = new MethodOf<Action<double[], double[], double>>(AddMul);
+				MethodInfo miMul = new MethodOf<Action<double[], double[], double>>(Mul);
+				MethodInfo miHashByte = new MethodOf<Func<double[], double, byte>>(HashByte);
+				var imageArg = Expression.Parameter(typeof(byte[,]), "image");
+				var line1Arg = Expression.Parameter(typeof(double[]), "line1");
+				var line2Arg = Expression.Parameter(typeof(double[]), "line2");
+				var hashArg = Expression.Parameter(typeof(byte[]), "hash");
+				var lineArg = Expression.Parameter(typeof(HashLine), "line");
+				Func<int, ParameterExpression, Expression> line = (i, arg) => Expression.Invoke(lineArg, imageArg,
+					Expression.Constant(i), arg);
+				var list = new List<Expression>();
+				double start = 0.0;
+				for (int k = 0; k < 8; k++)
+				{
+					double end = (height * (k + 1)) / 8.0;
+					if (k < 7) end += offset;
+					double istart = Math.Ceiling(start);
+					double iend = Math.Floor(end);
+					int istart2;
+					if (start != istart)
+					{
+						list.Add(Expression.Call(miMul, line1Arg, line2Arg, Expression.Constant(istart - start)));
+						istart2 = (int)istart;
+					}
+					else
+					{
+						if (iend > istart)
+							list.Add(line((int)istart, line1Arg));
+						istart2 = (int)istart + 1;
+					}
+					for (int n = istart2; n < (int)iend; n++)
+					{
+						list.Add(line(n, line2Arg));
+						list.Add(Expression.Call(miAdd, line1Arg, line2Arg));
+					}
+					if (end != iend)
+					{
+						list.Add(line((int)iend, line2Arg));
+						list.Add(Expression.Call(miAddMul, line1Arg, line2Arg, Expression.Constant(end - iend)));
+					}
+					list.Add(Expression.Assign(Expression.ArrayAccess(hashArg, Expression.Constant(k)),
+						Expression.Call(miHashByte, line1Arg, Expression.Constant(end - start))));
+					start = end;
+				}
+				var expr = Expression.Block(list.ToArray());
+				var lambda = Expression.Lambda<HashImage>(expr, imageArg, line1Arg, line2Arg, hashArg, lineArg);
+				return lambda.Compile();
+			}
+
+			public static ulong Hash(byte[,] image, double offsetX, double offsetY)
+			{
+				int width = image.GetLength(1);
+				int height = image.GetLength(0);
+				if (width < 8 || height < 8)
+					return 0ul;
+				HashLine line;
+				HashImage hash;
+				int keyX = (width << 4) + ((int)(offsetX * 2) + 16) % 16;
+				if (!lines.TryGetValue(keyX, out line))
+				{
+					lock (lines)
+					{
+						if (!lines.TryGetValue(keyX, out line))
+						{
+							line = BuildHashLine(width, offsetX);
+							lines.Add(keyX, line);
+						}
+					}
+				}
+				int keyY = (height << 4) + ((int)(offsetY * 2) + 16) % 16;
+				if (!images.TryGetValue(keyY, out hash))
+				{
+					lock(images)
+					{
+						if (!images.TryGetValue(keyY, out hash))
+						{
+							hash = BuildHashImage(height, offsetY);
+							images.Add(keyY, hash);
+						}
+					}
+				}
+				var l1 = new double[8];
+				var l2 = new double[8];
+				var l = new byte[8];
+				hash(image, l1, l2, l, line);
+				return BitConverter.ToUInt64(l, 0);
+			}
+
+			public static void HashMask(byte[,] image, double deltaX, double deltaY, out ulong hash, out ulong mask)
+			{
+				ulong? last = null;
+				mask = 0ul;
+				for (double x = -deltaX / 2.0; x <= deltaX / 2.0; x += 0.5)
+					for (double y = -deltaY / 2.0; y <= deltaY / 2.0; y += 0.5)
+					{
+						ulong h = HashManager.Hash(image, x, y);
+						mask |= (last ?? h) ^ h;
+						last = h;
+					}
+				hash = last.Value | mask;
+			}
+
+			public static IEnumerable<ulong> Bits(ulong value)
+			{
+				ulong mask = 1ul;
+				for (int k = 0; k < 64; k++)
+				{
+					if ((value & mask) == mask)
+						yield return mask;
+					mask <<= 1;
+				}
+			}
+
+			public static IEnumerable<int> Bits(int value)
+			{
+				int mask = 1;
+				for (int k = 0; k < 32; k++)
+				{
+					if ((value & mask) == mask)
+						yield return mask;
+					mask <<= 1;
+				}
+			}
+
+			public static IEnumerable<byte> Bits(byte value)
+			{
+				byte mask = 1;
+				for (int k = 0; k < 8; k++)
+				{
+					if ((value & mask) == mask)
+						yield return mask;
+					mask <<= 1;
+				}
+			}
+		}
+
 		public const int minAngleDiv = 12;
 		public const double maxAngle = 0.45; //less than Space.smoothStep
 
 		private double angle;
-		private double[] borders;
 		private byte[,] regular;
 		private byte[,] italic;
+
+		private Lazy<ulong> hash;
+		private Lazy<ulong[]> hashmask;
 
 		private byte[,] image
 		{
@@ -79,7 +341,7 @@ namespace SupRip
 			}
 		}
 
-		public double? ExactAngle
+		public double ExactAngle
 		{
 			get;
 			private set;
@@ -102,19 +364,11 @@ namespace SupRip
 			get;
 			private set;
 		}
-		public PointF LeftTopPoint
-		{
-			get { return new PointF(this.LeftTop, this.Coords.Top); }
-		}
 
 		public float LeftBottom
 		{
 			get;
 			private set;
-		}
-		public PointF LeftBottomPoint
-		{
-			get { return new PointF(this.LeftBottom, this.Coords.Bottom - 1.0f); }
 		}
 
 		public float RightTop
@@ -122,26 +376,25 @@ namespace SupRip
 			get;
 			private set;
 		}
-		public PointF RightTopPoint
-		{
-			get { return new PointF(this.RightTop, this.Coords.Top); }
-		}
 
 		public float RightBottom
 		{
 			get;
 			private set;
 		}
-		public PointF RightBottomPoint
-		{
-			get { return new PointF(this.RightBottom, this.Coords.Bottom - 1.0f); }
-		}
+
+		public ulong Hash { get { return this.hash.Value; } }
+
+		public ulong FontHash { get { return this.hashmask.Value[0]; } }
+
+		public ulong FontMask { get { return this.hashmask.Value[1]; } }
 
 		public SubtitleLetter(RectangleF r, string s = null)
 		{
 			this.Coords = r;
 			this.Text = s;
 			this.angle = 0.0;
+			this.ExactAngle = Double.NaN;
 			if (s == " ")
 			{
 				SetSpaceEdges();
@@ -151,13 +404,24 @@ namespace SupRip
 				this.LeftTop = this.LeftBottom = r.Left - 1;
 				this.RightTop = this.RightBottom = r.Right;
 			}
+			this.hash = new Lazy<ulong>(() => 0ul);
+			this.hashmask = new Lazy<ulong[]>(() => new ulong[2]);
 		}
 
 		public SubtitleLetter(byte[,] i, string s = null)
 		{
 			this.regular = i;
-			this.ReduceImage();
 			this.Text = s;
+			this.ExactAngle = Double.NaN;
+			this.hash = new Lazy<ulong>(() => HashManager.Hash(this.regular, 0.0, 0.0));
+			this.hashmask = new Lazy<ulong[]>(() =>
+			{
+				double deltaX = Math.Min(3.0, Math.Floor(this.ImageWidth / 12.0));
+				double deltaY = Math.Min(1.0, Math.Floor(this.ImageHeight / 12.0));
+				ulong hash, mask;
+				HashManager.HashMask(this.image, deltaX, deltaY, out hash, out mask);
+				return new ulong[] { hash, mask };
+			});
 		}
 
 		public SubtitleLetter(byte[,] i, RectangleF r, double a) : this(i)
@@ -334,7 +598,7 @@ namespace SupRip
 			if (delta == 0.0f)
 			{
 				this.italic = null;
-				ReduceImage();
+				this.hash = new Lazy<ulong>(() => HashManager.Hash(this.regular, 0.0, 0.0));
 				return;
 			}
 			int height = this.regular.GetLength(0);
@@ -360,217 +624,92 @@ namespace SupRip
 						this.italic[i, j2] = b;
 				}
 			}
-			ReduceImage();
+			this.hash = new Lazy<ulong>(() => HashManager.Hash(this.italic, 0.0, 0.0));
 		}
 
-		private void ReduceImage()
+		private double BorderTopWidth(byte[,] array, int position)
 		{
-			this.borders = new double[4];
-			for (int i = 0; i < 4; i++)
+			int height = array.GetLength(0);
+			for (int i = 0; i < height; i++)
 			{
-				this.borders[i] = this.AveragedBorderWidth(this.image, i);
+				if (array[i, position] > 200)
+				{
+					if (i == 0) return (double)i;
+					return (double)i - (double)array[i - 1, position] / (double)array[i, position];
+				}
 			}
+			return 0.0;
 		}
 
-		private double AveragedBorderWidth(byte[,] array, int side)
+		private double BorderBottomWidth(byte[,] array, int position)
 		{
-			int length = array.GetLength(0);
-			int length2 = array.GetLength(1);
-			int num = length / 2;
-			int num2 = length2 / 2;
-			int num3;
-			if (side == 0 || side == 2)
+			int height = array.GetLength(0);
+			for (int i = height - 1; i >= 0; i--)
 			{
-				num3 = num2;
+				if (array[i, position] > 200)
+				{
+					if (i == height - 1) return (double)i;
+					return (double)i + (double)array[i + 1, position] / (double)array[i, position];
+				}
 			}
-			else
-			{
-				num3 = num;
-			}
-			double num4 = this.BorderWidth(array, side, num3 - 1);
-			double num5 = this.BorderWidth(array, side, num3);
-			double num6 = this.BorderWidth(array, side, num3 + 1);
-			double num7 = (num4 + num5 + num6) / 3.0;
-			if (Math.Abs(num4 - num7) > 3.0 || Math.Abs(num5 - num7) > 3.0 || Math.Abs(num6 - num7) > 3.0)
-			{
-				return -1.0;
-			}
-			return num7;
+			return 0.0;
 		}
-		private double BorderWidth(byte[,] array, int side, int position = -1)
+
+		private double BorderLeftWidth(byte[,] array, int position)
 		{
-			double result = 0.0;
-			int length = array.GetLength(0);
-			int length2 = array.GetLength(1);
-			int num = length / 2;
-			int num2 = length2 / 2;
-			if (position != -1)
+			int width = array.GetLength(1);
+			for (int i = 0; i < width; i++)
 			{
-				num = position;
-				num2 = position;
-			}
-			switch (side)
-			{
-			case 0:
-			{
-				int i = 0;
-				while (i < length)
+				if (array[position, i] > 200)
 				{
-					if (array[i, num2] > 200)
-					{
-						if (i == 0)
-						{
-							result = (double)i;
-							break;
-						}
-						result = (double)i - (double)array[i - 1, num2] / (double)array[i, num2];
-						break;
-					}
-					else
-					{
-						i++;
-					}
+					if (i == 0) return (double)i;
+					return (double)i - (double)array[position, i - 1] / (double)array[position, i];
 				}
-				break;
 			}
-			case 1:
-			{
-				int i = length2 - 1;
-				while (i >= 0)
-				{
-					if (array[num, i] > 200)
-					{
-						if (i == length2 - 1)
-						{
-							result = (double)i;
-							break;
-						}
-						result = (double)i + (double)array[num, i + 1] / (double)array[num, i];
-						break;
-					}
-					else
-					{
-						i--;
-					}
-				}
-				break;
-			}
-			case 2:
-			{
-				int i = length - 1;
-				while (i >= 0)
-				{
-					if (array[i, num2] > 200)
-					{
-						if (i == length - 1)
-						{
-							result = (double)i;
-							break;
-						}
-						result = (double)i + (double)array[i + 1, num2] / (double)array[i, num2];
-						break;
-					}
-					else
-					{
-						i--;
-					}
-				}
-				break;
-			}
-			case 3:
-			{
-				int i = 0;
-				while (i < length2)
-				{
-					if (array[num, i] > 200)
-					{
-						if (i == 0)
-						{
-							result = (double)i;
-							break;
-						}
-						result = (double)i - (double)array[num, i - 1] / (double)array[num, i];
-						break;
-					}
-					else
-					{
-						i++;
-					}
-				}
-				break;
-			}
-			}
-			return result;
+			return 0.0;
 		}
+
+		private double BorderRightWidth(byte[,] array, int position)
+		{
+			int width = array.GetLength(1);
+			for (int i = width - 1; i >= 0; i--)
+			{
+				if (array[position, i] > 200)
+				{
+					if (i == width - 1) return (double)i;
+					return (double)i + (double)array[position, i + 1] / (double)array[position, i];
+				}
+			}
+			return 0.0;
+		}
+
 		private double FindTranslation(byte[,] a, byte[,] b)
 		{
-			a.GetLength(1);
-			int length = a.GetLength(0);
-			double[,] array = new double[4, 3];
-			int num = length / 5;
-			int num2 = num;
-			for (int i = 0; i < 3; i++)
+			int width = a.GetLength(0);
+			int step = width / 5;
+			double delta = 0.0;
+			for (int i = 0, y = step; i < 3; i++, y += step)
 			{
-				array[1, i] = this.BorderWidth(a, 1, num2);
-				array[3, i] = this.BorderWidth(a, 3, num2);
-				num2 += num;
+				delta += this.BorderRightWidth(b, y) - this.BorderRightWidth(a, y);
+				delta += this.BorderLeftWidth(b, y) - this.BorderLeftWidth(a, y);
 			}
-			double[,] array2 = new double[4, 3];
-			num = length / 5;
-			num2 = num;
-			for (int j = 0; j < 3; j++)
-			{
-				array2[1, j] = this.BorderWidth(b, 1, num2);
-				array2[3, j] = this.BorderWidth(b, 3, num2);
-				num2 += num;
-			}
-			double num3 = 0.0;
-			for (int k = 0; k < 3; k++)
-			{
-				num3 += array2[1, k] - array[1, k];
-			}
-			for (int l = 0; l < 3; l++)
-			{
-				num3 += array2[3, l] - array[3, l];
-			}
-			num3 /= 6.0;
-			double num4 = 0.0;
-			for (int m = 0; m < 3; m++)
-			{
-				num4 += Math.Pow(array2[1, m] - array[1, m] - num3, 2.0);
-			}
-			for (int n = 0; n < 3; n++)
-			{
-				num4 += Math.Pow(array2[3, n] - array[3, n] - num3, 2.0);
-			}
-			return num3;
+			delta /= 6.0;
+			return delta;
 		}
 
 		private int ComputeAbsDiff(byte[,] a, byte[,] b)
 		{
-			int num = Math.Min(a.GetLength(1), b.GetLength(1));
-			int num2 = Math.Min(a.GetLength(0), b.GetLength(0));
+			int height = Math.Min(a.GetLength(1), b.GetLength(1));
+			int width = Math.Min(a.GetLength(0), b.GetLength(0));
 			long num3 = 0L;
-			for (int i = 0; i < num2; i++)
+			for (int i = 0; i < width; i++)
 			{
-				for (int j = 0; j < num; j++)
+				for (int j = 0; j < height; j++)
 				{
 					num3 += (long)((a[i, j] - b[i, j]) * (a[i, j] - b[i, j]));
 				}
 			}
-			return (int)(num3 / (long)num2 / (long)num);
-		}
-
-		public bool BordersMatch(SubtitleLetter other)
-		{
-			for (int i = 0; i < 4; i++)
-			{
-				if (this.borders[i] != -1.0 && other.borders[i] != -1.0 && Math.Abs(this.borders[i] - other.borders[i]) > 4.0)
-				{
-					return false;
-				}
-			}
-			return true;
+			return (int)(num3 / (long)width / (long)height);
 		}
 
 		internal static byte[,] Widen(byte[,] img)
@@ -637,17 +776,17 @@ namespace SupRip
 			DateTime now = DateTime.Now;
 			byte[,] array = Widen(b);
 			Debugger.widenTime += (DateTime.Now - now).TotalMilliseconds;
-			int num = Math.Min(a.GetLength(1), array.GetLength(1));
-			int num2 = Math.Min(a.GetLength(0), array.GetLength(0));
-			int num3 = 0;
-			for (int i = 0; i < num2; i++)
+			int height = Math.Min(a.GetLength(1), array.GetLength(1));
+			int width = Math.Min(a.GetLength(0), array.GetLength(0));
+			int diff = 0;
+			for (int i = 0; i < width; i++)
 			{
-				for (int j = 0; j < num; j++)
+				for (int j = 0; j < height; j++)
 				{
-					num3 += (int)((byte)Math.Max(0, (int)(a[i, j] - array[i, j])));
+					diff += Math.Max(0, a[i, j] - array[i, j]);
 				}
 			}
-			return num3;
+			return diff;
 		}
 
 		public int Matches(SubtitleLetter o)
@@ -680,33 +819,33 @@ namespace SupRip
 				return this.image;
 			}
 			byte[,] array = new byte[this.ImageHeight, this.ImageWidth];
-			int num = Math.Sign(p) * (int)(Math.Abs(p) + 1.0);
-			int num2 = (num > 0) ? (num - 1) : (num + 1);
-			double num3 = Math.Abs(Math.IEEERemainder(p, 1.0));
+			int delta2 = Math.Sign(p) * (int)(Math.Abs(p) + 1.0);
+			int delta1 = (delta2 > 0) ? (delta2 - 1) : (delta2 + 1);
+			double level = Math.Abs(Math.IEEERemainder(p, 1.0));
 			Math.Floor(-1.4);
 			for (int i = 0; i < this.ImageHeight; i++)
 			{
 				for (int j = 0; j < this.ImageWidth; j++)
 				{
-					int num4;
-					if (j - num2 >= 0 && j - num2 < this.ImageWidth)
+					int pix1;
+					if (j - delta1 >= 0 && j - delta1 < this.ImageWidth)
 					{
-						num4 = (int)this.image[i, j - num2];
+						pix1 = (int)this.image[i, j - delta1];
 					}
 					else
 					{
-						num4 = 0;
+						pix1 = 0;
 					}
-					int num5;
-					if (j - num >= 0 && j - num < this.ImageWidth)
+					int pix2;
+					if (j - delta2 >= 0 && j - delta2 < this.ImageWidth)
 					{
-						num5 = (int)this.image[i, j - num2];
+						pix2 = (int)this.image[i, j - delta2];
 					}
 					else
 					{
-						num5 = 0;
+						pix2 = 0;
 					}
-					array[i, j] = (byte)((1.0 - num3) * (double)num4 + num3 * (double)num5);
+					array[i, j] = (byte)((1.0 - level) * (double)pix1 + level * (double)pix2);
 				}
 			}
 			return array;
