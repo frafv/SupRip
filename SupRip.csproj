@@ -59,6 +59,7 @@
     <Compile Include="SupRip\ErrorForm.Designer.cs">
       <DependentUpon>ErrorForm.cs</DependentUpon>
     </Compile>
+    <Compile Include="SupRip\Extensions.cs" />
     <Compile Include="SupRip\FontfileFormatException.cs" />
     <Compile Include="SupRip\MainForm.cs">
       <SubType>Form</SubType>
@@ -83,6 +84,7 @@
     <Compile Include="SupRip\SubtitleFont.cs" />
     <Compile Include="SupRip\SubtitleFonts.cs" />
     <Compile Include="SupRip\SubtitleImage.cs" />
+    <Compile Include="SupRip\SubtitleImageStream.cs" />
     <Compile Include="SupRip\SubtitleLetter.cs" />
     <Compile Include="SupRip\SupData.cs" />
     <Compile Include="SupRip\SUPFileFormatException.cs" />

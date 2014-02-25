@@ -15,13 +15,10 @@ namespace SupRip
 			Hddvd,
 			Bluray
 		}
+
 		private SubtitleFile.SubtitleType type;
 		private FileStream supFileStream;
 		private List<SupData> supDatas;
-		private int val;
-		private byte pos = 4;
-		private byte writeVal;
-		private int writePos = 6;
 		public SubtitleFile.SubtitleType Type
 		{
 			get
@@ -61,20 +58,20 @@ namespace SupRip
 			while (fs.ReadByte() == 83 && fs.ReadByte() == 80)
 			{
 				SupData supData = new SupData();
-				supData.startTime = (long)((ulong)this.LowEndianInt32(ref fs));
+				supData.startTime = fs.LowEndianInt32();
 				supData.startTime /= 90L;
-				this.LowEndianInt32(ref fs);
+				fs.LowEndianInt32();
 				long position = fs.Position;
-				this.LowEndianInt16(ref fs);
-				long num2 = position + (long)((ulong)this.BigEndianInt32(ref fs));
-				supData.startControlSeq = position + (long)((ulong)this.BigEndianInt32(ref fs));
+				fs.LowEndianInt16();
+				long num2 = position + fs.BigEndianInt32();
+				supData.startControlSeq = position + fs.BigEndianInt32();
 				long position2 = fs.Position;
 				fs.Position = supData.startControlSeq;
 				long num3 = 0L;
 				while (fs.Position < num2)
 				{
-					int num4 = this.BigEndianInt16(ref fs);
-					long num5 = position + (long)((ulong)this.BigEndianInt32(ref fs));
+					int num4 = fs.BigEndianInt16();
+					long num5 = position + fs.BigEndianInt32();
 					if (num5 != num3 && num5 > fs.Position)
 					{
 						num3 = num5;
@@ -146,8 +143,8 @@ namespace SupRip
 								}
 								break;
 							case 134:
-								supData.bitmapStarts[0, 0] = position + (long)((ulong)this.BigEndianInt32(ref fs));
-								supData.bitmapStarts[0, 1] = position + (long)((ulong)this.BigEndianInt32(ref fs));
+								supData.bitmapStarts[0, 0] = position + fs.BigEndianInt32();
+								supData.bitmapStarts[0, 1] = position + fs.BigEndianInt32();
 								if (supData.bitmapStarts[0, 0] != position2)
 								{
 									throw new Exception(string.Concat(new object[]
@@ -223,8 +220,8 @@ namespace SupRip
 			int num3 = 0;
 			while (fs.ReadByte() == 80 && fs.ReadByte() == 71)
 			{
-				uint num4 = this.BigEndianInt32(ref fs) / 90u;
-				uint arg_45_0 = this.BigEndianInt32(ref fs) / 90u;
+				uint num4 = fs.BigEndianInt32() / 90u;
+				uint arg_45_0 = fs.BigEndianInt32() / 90u;
 				int num5 = fs.ReadByte();
 				bool flag2 = false;
 				int num6 = num5;
@@ -232,10 +229,10 @@ namespace SupRip
 				{
 				case 20:
 				{
-					int num7 = this.BigEndianInt16(ref fs);
+					int num7 = fs.BigEndianInt16();
 					if (num7 == 2)
 					{
-						this.BigEndianInt16(ref fs);
+						fs.BigEndianInt16();
 						supData.emptySubtitle = true;
 					}
 					else
@@ -245,7 +242,7 @@ namespace SupRip
 							throw new Exception();
 						}
 						int num8 = (num7 - 2) / 5;
-						this.BigEndianInt16(ref fs);
+						fs.BigEndianInt16();
 						for (int i = 0; i < num8; i++)
 						{
 							int num9 = fs.ReadByte();
@@ -262,19 +259,19 @@ namespace SupRip
 				}
 				case 21:
 				{
-					int num7 = this.BigEndianInt16(ref fs);
-					this.BigEndianInt16(ref fs);
+					int num7 = fs.BigEndianInt16();
+					fs.BigEndianInt16();
 					fs.ReadByte();
 					int num13 = fs.ReadByte();
 					if (num13 == 192 || num13 == 128)
 					{
-						int num14 = this.BigEndianInt24(ref fs);
+						int num14 = fs.BigEndianInt24();
 						if (num13 == 192 && num7 - num14 != 7)
 						{
 							throw new Exception("unexpected difference in data block lengths = " + (num7 - num14));
 						}
-						int width = this.BigEndianInt16(ref fs);
-						int height = this.BigEndianInt16(ref fs);
+						int width = fs.BigEndianInt16();
+						int height = fs.BigEndianInt16();
 						if (supData.bitmapStarts[num3, 0] != 0L)
 						{
 							throw new Exception("Unexpected data on multipart subtitle, cont = " + num13);
@@ -311,10 +308,10 @@ namespace SupRip
 				}
 				case 22:
 				{
-					int num7 = this.BigEndianInt16(ref fs);
+					int num7 = fs.BigEndianInt16();
 					supData.startTime = (long)((ulong)num4);
-					this.BigEndianInt16(ref fs);
-					this.BigEndianInt16(ref fs);
+					fs.BigEndianInt16();
+					fs.BigEndianInt16();
 					fs.ReadByte();
 					fs.Position += 5L;
 					int num15 = fs.ReadByte();
@@ -333,8 +330,8 @@ namespace SupRip
 					{
 						fs.Position += 3L;
 						supData.Forced = ((fs.ReadByte() & 64) != 0);
-						this.BigEndianInt16(ref fs);
-						this.BigEndianInt16(ref fs);
+						fs.BigEndianInt16();
+						fs.BigEndianInt16();
 					}
 					else
 					{
@@ -343,37 +340,37 @@ namespace SupRip
 							fs.Position += 3L;
 							int num16 = fs.ReadByte();
 							supData.Forced = ((num16 & 64) != 0);
-							this.BigEndianInt16(ref fs);
-							this.BigEndianInt16(ref fs);
+							fs.BigEndianInt16();
+							fs.BigEndianInt16();
 							fs.Position += 3L;
 							fs.ReadByte();
 							supData.Forced = ((num16 & 64) != 0);
-							this.BigEndianInt16(ref fs);
-							this.BigEndianInt16(ref fs);
+							fs.BigEndianInt16();
+							fs.BigEndianInt16();
 						}
 					}
 					break;
 				}
 				case 23:
 				{
-					int num7 = this.BigEndianInt16(ref fs);
+					int num7 = fs.BigEndianInt16();
 					supData.numWindows = fs.ReadByte();
 					if (supData.numWindows != 1 && supData.numWindows != 2)
 					{
 						throw new SUPFileFormatException("Number of SUP Window descriptions = " + supData.numWindows);
 					}
 					fs.Position += 1L;
-					supData.bitmapPos.X = this.BigEndianInt16(ref fs);
-					supData.bitmapPos.Y = this.BigEndianInt16(ref fs);
-					supData.bitmapPos.Width = this.BigEndianInt16(ref fs);
-					supData.bitmapPos.Height = this.BigEndianInt16(ref fs);
+					supData.bitmapPos.X = fs.BigEndianInt16();
+					supData.bitmapPos.Y = fs.BigEndianInt16();
+					supData.bitmapPos.Width = fs.BigEndianInt16();
+					supData.bitmapPos.Height = fs.BigEndianInt16();
 					if (supData.numWindows == 2)
 					{
 						fs.Position += 1L;
-						supData.bitmapPos2.X = this.BigEndianInt16(ref fs);
-						supData.bitmapPos2.Y = this.BigEndianInt16(ref fs);
-						supData.bitmapPos2.Width = this.BigEndianInt16(ref fs);
-						supData.bitmapPos2.Height = this.BigEndianInt16(ref fs);
+						supData.bitmapPos2.X = fs.BigEndianInt16();
+						supData.bitmapPos2.Y = fs.BigEndianInt16();
+						supData.bitmapPos2.Width = fs.BigEndianInt16();
+						supData.bitmapPos2.Height = fs.BigEndianInt16();
 						if (flag)
 						{
 						}
@@ -390,7 +387,7 @@ namespace SupRip
 					{
 						supData.emptySubtitle = true;
 					}
-					int num7 = this.BigEndianInt16(ref fs);
+					int num7 = fs.BigEndianInt16();
 					if (num7 != 0)
 					{
 						throw new Exception("code 80, length != 0");
@@ -531,8 +528,7 @@ namespace SupRip
 		[Conditional("DEBUG")]
 		private void WriteSub()
 		{
-			FileStream fileStream = new FileStream("c:\\temp\\out.sub", FileMode.Create, FileAccess.Write);
-			BinaryWriter binaryWriter = new BinaryWriter(fileStream);
+			var fileStream = new SubtitleImageStream(new FileStream("c:\\temp\\out.sub", FileMode.Create, FileAccess.Write));
 			byte[] array = new byte[29];
 			byte b = 32;
 			long num = 0L;
@@ -585,7 +581,7 @@ namespace SupRip
 			array[26] = (byte)((int)(array2[1] & 127) << 1 | (array2[0] & 128) >> 7);
 			array[27] = (byte)((int)(array2[0] & 127) << 1 | 1);
 			array[28] = b;
-			binaryWriter.Write(array);
+			fileStream.Write(array);
 			fileStream.WriteByte(96);
 			fileStream.WriteByte(58);
 			fileStream.WriteByte(32);
@@ -617,89 +613,89 @@ namespace SupRip
 				fileStream.WriteByte(255);
 				num9++;
 			}
-			binaryWriter.Close();
 			fileStream.Close();
 		}
-		private void WritePixels(FileStream fs, int num, byte color)
+		private void WritePixels(SubtitleImageStream fs, int num, byte color)
 		{
 			if (num < 4)
 			{
-				this.Write2Bits(fs, (byte)num);
-				this.Write2Bits(fs, color);
+				fs.Write2Bits((byte)num);
+				fs.Write2Bits(color);
 				return;
 			}
 			if (num < 16)
 			{
-				this.Write2Bits(fs, 0);
-				this.Write2Bits(fs, (byte)(num >> 2));
-				this.Write2Bits(fs, (byte)(num & 3));
-				this.Write2Bits(fs, color);
+				fs.Write2Bits(0);
+				fs.Write2Bits((byte)(num >> 2));
+				fs.Write2Bits((byte)(num & 3));
+				fs.Write2Bits(color);
 				return;
 			}
 			if (num < 64)
 			{
-				this.Write2Bits(fs, 0);
-				this.Write2Bits(fs, 0);
-				this.Write2Bits(fs, (byte)(num >> 4));
-				this.Write2Bits(fs, (byte)(num >> 2 & 3));
-				this.Write2Bits(fs, (byte)(num & 3));
-				this.Write2Bits(fs, color);
+				fs.Write2Bits(0);
+				fs.Write2Bits(0);
+				fs.Write2Bits((byte)(num >> 4));
+				fs.Write2Bits((byte)(num >> 2 & 3));
+				fs.Write2Bits((byte)(num & 3));
+				fs.Write2Bits(color);
 				return;
 			}
 			if (num < 256)
 			{
-				this.Write2Bits(fs, 0);
-				this.Write2Bits(fs, 0);
-				this.Write2Bits(fs, 0);
-				this.Write2Bits(fs, (byte)(num >> 6));
-				this.Write2Bits(fs, (byte)(num >> 4 & 3));
-				this.Write2Bits(fs, (byte)(num >> 2 & 3));
-				this.Write2Bits(fs, (byte)(num & 3));
-				this.Write2Bits(fs, color);
+				fs.Write2Bits(0);
+				fs.Write2Bits(0);
+				fs.Write2Bits(0);
+				fs.Write2Bits((byte)(num >> 6));
+				fs.Write2Bits((byte)(num >> 4 & 3));
+				fs.Write2Bits((byte)(num >> 2 & 3));
+				fs.Write2Bits((byte)(num & 3));
+				fs.Write2Bits(color);
 				return;
 			}
-			this.Write2Bits(fs, 0);
-			this.Write2Bits(fs, 0);
-			this.Write2Bits(fs, 0);
-			this.Write2Bits(fs, 0);
-			this.Write2Bits(fs, 0);
-			this.Write2Bits(fs, 0);
-			this.Write2Bits(fs, 0);
-			this.Write2Bits(fs, color);
+			fs.Write2Bits(0);
+			fs.Write2Bits(0);
+			fs.Write2Bits(0);
+			fs.Write2Bits(0);
+			fs.Write2Bits(0);
+			fs.Write2Bits(0);
+			fs.Write2Bits(0);
+			fs.Write2Bits(color);
 		}
-		private void WriteType1(FileStream fs)
+		private void WriteType1(SubtitleImageStream fs)
 		{
-			this.Write2Bits(fs, 2);
-			this.Write2Bits(fs, 0);
-			this.Write2Bits(fs, 3);
-			this.Write2Bits(fs, 3);
-			this.Write2Bits(fs, 3);
-			this.Write2Bits(fs, 3);
+			fs.Write2Bits(2);
+			fs.Write2Bits(0);
+			fs.Write2Bits(3);
+			fs.Write2Bits(3);
+			fs.Write2Bits(3);
+			fs.Write2Bits(3);
 		}
-		private void WriteType2(FileStream fs)
+		private void WriteType2(SubtitleImageStream fs)
 		{
-			this.Write2Bits(fs, 2);
-			this.Write2Bits(fs, 3);
-			this.Write2Bits(fs, 3);
-			this.Write2Bits(fs, 3);
-			this.Write2Bits(fs, 3);
-			this.Write2Bits(fs, 3);
+			fs.Write2Bits(2);
+			fs.Write2Bits(3);
+			fs.Write2Bits(3);
+			fs.Write2Bits(3);
+			fs.Write2Bits(3);
+			fs.Write2Bits(3);
 		}
-		private void WriteType3(FileStream fs)
+		private void WriteType3(SubtitleImageStream fs)
 		{
-			this.Write2Bits(fs, 2);
-			this.Write2Bits(fs, 0);
-			this.Write2Bits(fs, 2);
-			this.Write2Bits(fs, 0);
-			this.Write2Bits(fs, 3);
-			this.Write2Bits(fs, 3);
+			fs.Write2Bits(2);
+			fs.Write2Bits(0);
+			fs.Write2Bits(2);
+			fs.Write2Bits(0);
+			fs.Write2Bits(3);
+			fs.Write2Bits(3);
 		}
-		private Bitmap GetHdBitmap(SupData data)
+
+		private Bitmap GetHdBitmap(SupData data, byte[] buffer)
 		{
 			int width = data.bitmapPos.Width;
 			int height = data.bitmapPos.Height;
 			byte[] array = new byte[width * height * 4];
-			MemoryStream memoryStream = new MemoryStream(this.ReadIntoMemory(this.supFileStream, data), false);
+			var memoryStream = new SubtitleImageStream(buffer);
 			bool flag = false;
 			int i = 0;
 			int num = width * 4;
@@ -721,18 +717,18 @@ namespace SupRip
 				}
 				while (num3 < height && memoryStream.Position < num2)
 				{
-					int num4 = this.Read2Bits(memoryStream);
+					int num4 = memoryStream.Read2Bits();
 					int num5;
 					if ((num4 & 1) == 0)
 					{
-						num5 = this.Read2Bits(memoryStream);
+						num5 = memoryStream.Read2Bits();
 					}
 					else
 					{
-						num5 = this.Read2Bits(memoryStream);
-						num5 = (num5 << 2) + this.Read2Bits(memoryStream);
-						num5 = (num5 << 2) + this.Read2Bits(memoryStream);
-						num5 = (num5 << 2) + this.Read2Bits(memoryStream);
+						num5 = memoryStream.Read2Bits();
+						num5 = (num5 << 2) + memoryStream.Read2Bits();
+						num5 = (num5 << 2) + memoryStream.Read2Bits();
+						num5 = (num5 << 2) + memoryStream.Read2Bits();
 					}
 					if ((num4 & 2) == 0)
 					{
@@ -740,18 +736,18 @@ namespace SupRip
 					}
 					else
 					{
-						num4 = this.Read2Bits(memoryStream);
+						num4 = memoryStream.Read2Bits();
 						if ((num4 & 2) == 0)
 						{
-							num4 = (num4 << 2) + this.Read2Bits(memoryStream);
+							num4 = (num4 << 2) + memoryStream.Read2Bits();
 							num4 += 2;
 						}
 						else
 						{
 							num4 &= 1;
-							num4 = (num4 << 2) + this.Read2Bits(memoryStream);
-							num4 = (num4 << 2) + this.Read2Bits(memoryStream);
-							num4 = (num4 << 2) + this.Read2Bits(memoryStream);
+							num4 = (num4 << 2) + memoryStream.Read2Bits();
+							num4 = (num4 << 2) + memoryStream.Read2Bits();
+							num4 = (num4 << 2) + memoryStream.Read2Bits();
 							if (num4 == 0)
 							{
 								num4 = data.bitmapPos.Width - i;
@@ -777,7 +773,7 @@ namespace SupRip
 						flag = false;
 						i = 0;
 						num3 += 2;
-						this.Read2Bits(true);
+						memoryStream.Read2Bits(true);
 					}
 				}
 			}
@@ -812,18 +808,35 @@ namespace SupRip
 			}
 			return array;
 		}
-		private Bitmap GetBitmap(SupData data)
+
+		internal byte[] ReadBitmap(int n)
+		{
+			return this.ReadIntoMemory(this.supFileStream, this.supDatas[n]);
+		}
+
+		internal Bitmap GetBitmap(int n, byte[] data)
+		{
+			return GetBitmap(this.supDatas[n], data);
+		}
+
+		public Bitmap GetBitmap(SupData data)
+		{
+			return GetBitmap(data, this.ReadIntoMemory(this.supFileStream, data));
+		}
+
+		private Bitmap GetBitmap(SupData data, byte[] buffer)
 		{
 			if (this.type == SubtitleFile.SubtitleType.Bluray)
 			{
-				return this.GetBlurayBitmap(data);
+				return this.GetBlurayBitmap(data, buffer);
 			}
 			if (this.type == SubtitleFile.SubtitleType.Hddvd)
 			{
-				return this.GetHdBitmap(data);
+				return this.GetHdBitmap(data, buffer);
 			}
 			throw new Exception("trying to get an image without a type set");
 		}
+
 		private bool CompareBitmaps(SupData a, SupData b)
 		{
 			if (a.BitmapHash == 0uL)
@@ -836,7 +849,7 @@ namespace SupRip
 			}
 			return a.BitmapHash == b.BitmapHash;
 		}
-		private Bitmap GetBlurayBitmap(SupData data)
+		private Bitmap GetBlurayBitmap(SupData data, byte[] buffer)
 		{
 			int width = data.bitmapPos.Width;
 			int height = data.bitmapPos.Height;
@@ -845,7 +858,7 @@ namespace SupRip
 			int i = 0;
 			int j = 0;
 			int num = width * 4;
-			MemoryStream memoryStream = new MemoryStream(this.ReadIntoMemory(this.supFileStream, data), false);
+			var memoryStream = new SubtitleImageStream(buffer);
 			int num2 = 0;
 			while (j < height)
 			{
@@ -858,16 +871,16 @@ namespace SupRip
 				}
 				else
 				{
-					int num4 = this.Read2Bits(memoryStream);
+					int num4 = memoryStream.Read2Bits();
 					if ((num4 & 2) == 0)
 					{
 						num3 = 0;
 						if ((num4 & 1) == 0)
 						{
 							int num5 = 0;
-							num5 = (num5 << 2) + this.Read2Bits(memoryStream);
-							num5 = (num5 << 2) + this.Read2Bits(memoryStream);
-							num5 = (num5 << 2) + this.Read2Bits(memoryStream);
+							num5 = (num5 << 2) + memoryStream.Read2Bits();
+							num5 = (num5 << 2) + memoryStream.Read2Bits();
+							num5 = (num5 << 2) + memoryStream.Read2Bits();
 							if (num5 == 0)
 							{
 								flag = true;
@@ -880,9 +893,9 @@ namespace SupRip
 						else
 						{
 							int num5 = 0;
-							num5 = (num5 << 2) + this.Read2Bits(memoryStream);
-							num5 = (num5 << 2) + this.Read2Bits(memoryStream);
-							num5 = (num5 << 2) + this.Read2Bits(memoryStream);
+							num5 = (num5 << 2) + memoryStream.Read2Bits();
+							num5 = (num5 << 2) + memoryStream.Read2Bits();
+							num5 = (num5 << 2) + memoryStream.Read2Bits();
 							num5 = (num5 << 8) + memoryStream.ReadByte();
 							num2 = num5;
 						}
@@ -892,17 +905,17 @@ namespace SupRip
 						if ((num4 & 1) == 0)
 						{
 							int num5 = 0;
-							num5 = (num5 << 2) + this.Read2Bits(memoryStream);
-							num5 = (num5 << 2) + this.Read2Bits(memoryStream);
-							num5 = (num5 << 2) + this.Read2Bits(memoryStream);
+							num5 = (num5 << 2) + memoryStream.Read2Bits();
+							num5 = (num5 << 2) + memoryStream.Read2Bits();
+							num5 = (num5 << 2) + memoryStream.Read2Bits();
 							num2 = num5;
 						}
 						else
 						{
 							int num5 = 0;
-							num5 = (num5 << 2) + this.Read2Bits(memoryStream);
-							num5 = (num5 << 2) + this.Read2Bits(memoryStream);
-							num5 = (num5 << 2) + this.Read2Bits(memoryStream);
+							num5 = (num5 << 2) + memoryStream.Read2Bits();
+							num5 = (num5 << 2) + memoryStream.Read2Bits();
+							num5 = (num5 << 2) + memoryStream.Read2Bits();
 							num5 = (num5 << 8) + memoryStream.ReadByte();
 							num2 = num5;
 						}
@@ -942,77 +955,6 @@ namespace SupRip
 			Marshal.Copy(array, 0, scan, array.Length);
 			bitmap.UnlockBits(bitmapData);
 			return bitmap;
-		}
-		private uint LowEndianInt32(ref FileStream fs)
-		{
-			byte[] array = new byte[4];
-			fs.Read(array, 0, 4);
-			return (uint)((int)array[0] + ((int)array[1] << 8) + ((int)array[2] << 16) + ((int)array[3] << 24));
-		}
-		private uint BigEndianInt32(ref FileStream fs)
-		{
-			byte[] array = new byte[4];
-			fs.Read(array, 0, 4);
-			return (uint)((int)array[3] + ((int)array[2] << 8) + ((int)array[1] << 16) + ((int)array[0] << 24));
-		}
-		private int BigEndianInt16(ref FileStream fs)
-		{
-			byte[] array = new byte[2];
-			fs.Read(array, 0, 2);
-			return (int)array[1] + ((int)array[0] << 8);
-		}
-		private int BigEndianInt24(ref FileStream fs)
-		{
-			byte[] array = new byte[3];
-			fs.Read(array, 0, 3);
-			return (int)array[2] + ((int)array[1] << 8) + ((int)array[0] << 16);
-		}
-		private int LowEndianInt16(ref FileStream fs)
-		{
-			byte[] array = new byte[2];
-			fs.Read(array, 0, 2);
-			return (int)array[0] + ((int)array[1] << 8);
-		}
-		private int Read2Bits(Stream fs)
-		{
-			if (this.pos >= 3)
-			{
-				this.pos = 0;
-				this.val = fs.ReadByte();
-			}
-			else
-			{
-				this.pos += 1;
-			}
-			int num = (int)(2 * (3 - this.pos));
-			return (this.val & 3 << num) >> num;
-		}
-		private void Write2Bits(Stream fs, byte v)
-		{
-			this.writeVal += (byte)(v << this.writePos);
-			this.writePos -= 2;
-			if (this.writePos < 0)
-			{
-				fs.WriteByte(this.writeVal);
-				this.writePos = 6;
-				this.writeVal = 0;
-			}
-		}
-		private void Write2Bits(Stream fs, bool flush)
-		{
-			if (flush)
-			{
-				fs.WriteByte(this.writeVal);
-				this.pos = 6;
-				this.writeVal = 0;
-			}
-		}
-		private void Read2Bits(bool flush)
-		{
-			if (flush)
-			{
-				this.pos = 4;
-			}
 		}
 		public SubtitleImage GetSubtitleImage(int n)
 		{

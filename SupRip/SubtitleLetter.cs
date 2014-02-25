@@ -282,6 +282,7 @@ namespace SupRip
 
 		private Lazy<ulong> hash;
 		private Lazy<ulong[]> hashmask;
+		private Lazy<byte[,]> widenImage;
 
 		private byte[,] image
 		{
@@ -411,6 +412,7 @@ namespace SupRip
 		public SubtitleLetter(byte[,] i, string s = null)
 		{
 			this.regular = i;
+			this.widenImage = new Lazy<byte[,]>(() => Widen(this.regular));
 			this.Text = s;
 			this.ExactAngle = Double.NaN;
 			this.hash = new Lazy<ulong>(() => HashManager.Hash(this.regular, 0.0, 0.0));
@@ -625,6 +627,7 @@ namespace SupRip
 				}
 			}
 			this.hash = new Lazy<ulong>(() => HashManager.Hash(this.italic, 0.0, 0.0));
+			this.widenImage = new Lazy<byte[,]>(() => { return null; });
 		}
 
 		private double BorderTopWidth(byte[,] array, int position)
@@ -771,10 +774,10 @@ namespace SupRip
 			return bold;
 		}
 
-		private int Difference(byte[,] a, byte[,] b)
+		private int Difference(byte[,] a, byte[,] b, byte[,] bWiden)
 		{
 			DateTime now = DateTime.Now;
-			byte[,] array = Widen(b);
+			byte[,] array = bWiden ?? Widen(b);
 			Debugger.widenTime += (DateTime.Now - now).TotalMilliseconds;
 			int height = Math.Min(a.GetLength(1), array.GetLength(1));
 			int width = Math.Min(a.GetLength(0), array.GetLength(0));
@@ -800,7 +803,7 @@ namespace SupRip
 			byte[,] array = o.MoveLetter(-num);
 			Debugger.translationTime += (DateTime.Now - now).TotalMilliseconds;
 			now = DateTime.Now;
-			int num2 = this.Difference(this.image, array) + this.Difference(array, this.image);
+			int num2 = this.Difference(this.image, array, null) + this.Difference(array, this.image, this.widenImage.Value);
 			Debugger.diffTime += (DateTime.Now - now).TotalMilliseconds;
 			if (num2 > 0)
 			{

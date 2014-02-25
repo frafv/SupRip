@@ -482,14 +482,17 @@ namespace SupRip
 		private static int angleCount;
 		private static object italicSync = new object();
 		public static double italicAngle = Double.NaN;
-		public SubtitleImage(Bitmap source)
+		public SubtitleImage(Bitmap source) : this(source, true) { }
+
+		internal SubtitleImage(Bitmap source, bool create)
 		{
 			this.subtitleBitmap = new Bitmap(source.Width + 20, source.Height, PixelFormat.Format32bppArgb);
 			Graphics graphics = Graphics.FromImage(this.subtitleBitmap);
 			graphics.FillRectangle(new SolidBrush(Color.Black), 0, 0, source.Width + 20, source.Height);
 			graphics.DrawImage(source, new Point(10, 0));
 			graphics.Dispose();
-			this.CreateSubtitleArray();
+			if (create)
+				this.CreateSubtitleArray(GetBitmapData());
 		}
 
 		private static void FindNextRange(byte[,] image, int [,] nextArray, int line, byte pixelLevel1, byte pixelLevel2)
@@ -520,15 +523,29 @@ namespace SupRip
 			}
 		}
 
-		private void CreateSubtitleArray()
+		internal byte[] GetBitmapData()
 		{
 			int lineWidth = this.subtitleBitmap.Size.Width;
 			int columnHeight = this.subtitleBitmap.Height;
+			byte[] array;
 			BitmapData bitmapData = this.subtitleBitmap.LockBits(new Rectangle(0, 0, lineWidth, columnHeight), ImageLockMode.ReadOnly, this.subtitleBitmap.PixelFormat);
-			byte[] array = new byte[lineWidth * columnHeight * 4];
-			IntPtr scan = bitmapData.Scan0;
-			Marshal.Copy(scan, array, 0, array.Length);
-			this.subtitleBitmap.UnlockBits(bitmapData);
+			try
+			{
+				array = new byte[lineWidth * columnHeight * 4];
+				IntPtr scan = bitmapData.Scan0;
+				Marshal.Copy(scan, array, 0, array.Length);
+			}
+			finally
+			{
+				this.subtitleBitmap.UnlockBits(bitmapData);
+			}
+			return array;
+		}
+
+		internal void CreateSubtitleArray(byte[] array)
+		{
+			int lineWidth = this.subtitleBitmap.Size.Width;
+			int columnHeight = this.subtitleBitmap.Height;
 			this.subtitleArray = new byte[columnHeight, lineWidth];
 			this.nextArray = new int[this.subtitleArray.GetLength(0), this.subtitleArray.GetLength(1)];
 			this.maxPixelLevel = 0;

@@ -1,5 +1,7 @@
 using System;
+using System.Linq;
 using System.Threading;
+
 namespace SupRip
 {
 	internal class OcrThread
@@ -7,6 +9,7 @@ namespace SupRip
 		private ManualResetEvent stopEvent;
 		private ManualResetEvent finishedEvent;
 		private MainForm parentForm;
+		private SubtitleFile subfile;
 		private int nSubtitles;
 		private int startingSubtitle;
 		private bool reportUnknownChar;
@@ -15,70 +18,68 @@ namespace SupRip
 			get;
 			private set;
 		}
-		public OcrThread(MainForm f, ManualResetEvent se, ManualResetEvent fe, int n)
+
+		public OcrThread(MainForm f, SubtitleFile file, ManualResetEvent se, ManualResetEvent fe, int n)
 		{
 			this.parentForm = f;
+			this.subfile = file;
 			this.stopEvent = se;
 			this.finishedEvent = fe;
 			this.nSubtitles = n;
 			this.reportUnknownChar = false;
 		}
-		public OcrThread(MainForm f, ManualResetEvent se, ManualResetEvent fe, int start, int n)
+		public OcrThread(MainForm f, SubtitleFile file, ManualResetEvent se, ManualResetEvent fe, int start, int n)
+			: this(f, file, se, fe, n)
 		{
-			this.parentForm = f;
-			this.stopEvent = se;
-			this.finishedEvent = fe;
-			this.nSubtitles = n;
 			this.startingSubtitle = start;
 			this.reportUnknownChar = true;
 			this.FoundNum = -1;
 		}
+
 		public void Run()
 		{
-			if (this.reportUnknownChar)
-			{
-				for (int i = this.startingSubtitle; i < this.nSubtitles; i++)
+			this.parentForm.Invoke(this.parentForm.updateProgressDelegate, 0);
+			int start = this.reportUnknownChar ? this.startingSubtitle : 0;
+			Enumerable.Range(start, this.nSubtitles - start)
+				.Where(i => !AppOptions.forcedOnly || this.subfile.IsSubtitleForced(i))
+				.TakeWhile(i => !this.stopEvent.WaitOne(0, true))
+				//Sequential file reading
+				.Select(i => new { data = this.subfile.ReadBitmap(i), n = i }).AsParallel().AsOrdered()
+				//Parallel bitmaps building
+				.Select(bitmap =>
 				{
-					if (!AppOptions.forcedOnly || this.parentForm.IsSubtitleForced(i))
-					{
-						if (this.stopEvent.WaitOne(0, true))
-						{
-							break;
-						}
-						try
-						{
-							this.parentForm.ImageOCR(i, true);
-							this.parentForm.Invoke(this.parentForm.updateProgressDelegate, new object[]
-							{
-								i
-							});
-						}
-						catch (UnknownCharacterException)
-						{
-							this.FoundNum = i;
-							break;
-						}
-					}
-				}
-			}
-			else
-			{
-				for (int j = 0; j < this.nSubtitles; j++)
+					var subtitleImage = new SubtitleImage(this.subfile.GetBitmap(bitmap.n, bitmap.data), false);
+					return new { subtitleImage, bitmap.n, data = subtitleImage.GetBitmapData() };
+				})
+				//Sequential image processing (parallel processing inside)
+				.ForEach(image =>
 				{
-					if (!AppOptions.forcedOnly || this.parentForm.IsSubtitleForced(j))
+					image.subtitleImage.CreateSubtitleArray(image.data);
+					try
 					{
-						if (this.stopEvent.WaitOne(0, true))
-						{
-							break;
-						}
-						this.parentForm.ImageOCR(j);
-						this.parentForm.Invoke(this.parentForm.updateProgressDelegate, new object[]
-						{
-							j
-						});
+						this.parentForm.ImageOCR(image.subtitleImage, this.reportUnknownChar);
 					}
-				}
-			}
+					catch (AggregateException ex)
+					{
+						if (!ex.InnerExceptions.OfType<UnknownCharacterException>().Any())
+							throw;
+						if (!this.reportUnknownChar)
+							throw ex.InnerExceptions.OfType<UnknownCharacterException>().FirstOrDefault();
+						this.FoundNum = image.n;
+						return false;
+					}
+					catch (UnknownCharacterException)
+					{
+						if (!this.reportUnknownChar)
+							throw;
+						this.FoundNum = image.n;
+						return false;
+					}
+					this.subfile.UpdateSubtitleText(image.n, image.subtitleImage);
+					this.parentForm.Invoke(this.parentForm.updateProgressDelegate, image.n);
+					return true;
+				});
+
 			this.finishedEvent.Set();
 		}
 	}

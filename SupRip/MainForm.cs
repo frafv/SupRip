@@ -241,12 +241,14 @@ namespace SupRip
 				this.fonts.AddLetter(this.activeLetter);
 			}
 		}
+
 		private void ImageOCR(SubtitleImage si)
 		{
 			this.ImageOCR(si, false);
 			si.FixSpaces();
 		}
-		private void ImageOCR(SubtitleImage si, bool reportUnknownCharacter)
+
+		internal void ImageOCR(SubtitleImage si, bool reportUnknownCharacter)
 		{
 			if (si.letters == null)
 			{
@@ -285,12 +287,6 @@ namespace SupRip
 					}
 				}
 			});
-		}
-		public void ImageOCR(int n, bool reportUnknownCharacter = false)
-		{
-			SubtitleImage subtitleImage = this.subfile.GetSubtitleImage(n);
-			this.ImageOCR(subtitleImage, reportUnknownCharacter);
-			this.subfile.UpdateSubtitleText(n, subtitleImage);
 		}
 		private void EnterHTMLText(RichTextBox r, string t)
 		{
@@ -360,7 +356,7 @@ namespace SupRip
 				this.stopEvent.Reset();
 				this.finishedEvent.Reset();
 				this.updateProgressDelegate = new DelegateUpdateProgress(this.UpdateProgress);
-				OcrThread ocrThread = new OcrThread(this, this.stopEvent, this.finishedEvent, this.currentNum, this.subfile.NumSubtitles);
+				OcrThread ocrThread = new OcrThread(this, this.subfile, this.stopEvent, this.finishedEvent, this.currentNum, this.subfile.NumSubtitles);
 				Thread thread = new Thread(new ThreadStart(ocrThread.Run));
 				thread.Start();
 				using (this.pf = new ProgressForm(this, this.subfile.NumSubtitles))
@@ -667,7 +663,7 @@ namespace SupRip
 			this.stopEvent.Reset();
 			this.finishedEvent.Reset();
 			this.updateProgressDelegate = new DelegateUpdateProgress(this.UpdateProgress);
-			OcrThread @object = new OcrThread(this, this.stopEvent, this.finishedEvent, this.subfile.NumSubtitles);
+			OcrThread @object = new OcrThread(this, this.subfile, this.stopEvent, this.finishedEvent, this.subfile.NumSubtitles);
 			Thread thread = new Thread(new ThreadStart(@object.Run));
 			thread.Start();
 			using (this.pf = new ProgressForm(this, this.subfile.NumSubtitles))
@@ -810,6 +806,7 @@ namespace SupRip
 			ContextMenu contextMenu = new ContextMenu(array2);
 			contextMenu.Show(this.debugButton, new Point(0, 0));
 		}
+
 		private void debugMenu_Click(object sender, EventArgs e)
 		{
 			MenuItem menuItem = (MenuItem)sender;
@@ -818,10 +815,7 @@ namespace SupRip
 				this.fonts.MergeUserFont(((MenuItem)sender).Text);
 			}
 		}
-		public bool IsSubtitleForced(int n)
-		{
-			return this.subfile.IsSubtitleForced(n);
-		}
+
 		private void options_TextChanged(object sender, EventArgs e)
 		{
 			this.ApplyOptions();
