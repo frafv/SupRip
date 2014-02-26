@@ -12,28 +12,45 @@ namespace SupRip
 			var stack = new Dictionary<int, TItem>();
 			int pos = 0;
 			bool stop = false;
-			source.Select((item, i) =>
+			source.Select((item, i) => new { item, i }).ForAll(data =>
 			{
-				if (stop) return item;
+				if (stop) return;
 				lock (stack)
 				{
-					if (i == pos)
+					if (stop) return;
+					if (data.i == pos)
 					{
-						stop = !action(item);
+						stop = !action(data.item);
 						pos++;
 					}
 					else
 					{
-						stack.Add(i, item);
+						stack.Add(data.i, data.item);
 					}
+					TItem item;
 					while (!stop && stack.TryGetValue(pos, out item))
 					{
 						stop = !action(item);
 						pos++;
 					}
 				}
-				return item;
-			}).ToArray();
+			});
+		}
+
+		public static void RangeForAll(this int count, Action<int> action, bool parallel = true)
+		{
+			if (parallel)
+				ParallelEnumerable.Range(0, count).ForAll(action);
+			else
+				for (int i = 0; i < count; i++) action(i);
+		}
+
+		public static void ForEach<TItem>(this List<TItem> list, Action<TItem> action, bool parallel)
+		{
+			if (parallel)
+				list.AsParallel().ForAll(action);
+			else
+				list.ForEach(action);
 		}
 
 		public static uint LowEndianInt32(this Stream fs)

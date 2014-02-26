@@ -80,6 +80,7 @@
     <Compile Include="SupRip\Space.cs" />
     <Compile Include="SupRip\SRTInfo.cs" />
     <Compile Include="SupRip\SSTFileFormatException.cs" />
+    <Compile Include="SupRip\SubtitleBitmap.cs" />
     <Compile Include="SupRip\SubtitleFile.cs" />
     <Compile Include="SupRip\SubtitleFont.cs" />
     <Compile Include="SupRip\SubtitleFonts.cs" />

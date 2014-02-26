@@ -255,7 +255,7 @@ namespace SupRip
 				return;
 			}
 			this.fonts.debugStrings.Clear();
-			si.letters.Where(current => current.Text == null).AsParallel().ForAll(current =>
+			si.letters.Where(current => current.Text == null).AsParallel().WithExecutionMode(ParallelExecutionMode.ForceParallelism).ForAll(current =>
 			{
 				DateTime now = DateTime.Now;
 				SubtitleLetter subtitleLetter = this.fonts.FindMatch(current,
@@ -435,7 +435,7 @@ namespace SupRip
 			{
 				return;
 			}
-			if (this.currentSubtitle.subtitleBitmap == null)
+			if (this.currentSubtitle.SubtitleBitmap == null)
 			{
 				try
 				{
@@ -447,7 +447,7 @@ namespace SupRip
 				}
 				return;
 			}
-			Bitmap bitmap = (Bitmap)this.currentSubtitle.subtitleBitmap.Clone();
+			Bitmap bitmap = this.currentSubtitle.SubtitleBitmap.Clone();
 			Graphics graphics = Graphics.FromImage(bitmap);
 			if (this.currentSubtitle.letters != null)
 			{

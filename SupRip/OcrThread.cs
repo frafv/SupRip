@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 
@@ -40,6 +41,8 @@ namespace SupRip
 		{
 			this.parentForm.Invoke(this.parentForm.updateProgressDelegate, 0);
 			int start = this.reportUnknownChar ? this.startingSubtitle : 0;
+			var sw = new Stopwatch();
+			sw.Start();
 			Enumerable.Range(start, this.nSubtitles - start)
 				.Where(i => !AppOptions.forcedOnly || this.subfile.IsSubtitleForced(i))
 				.TakeWhile(i => !this.stopEvent.WaitOne(0, true))
@@ -49,12 +52,11 @@ namespace SupRip
 				.Select(bitmap =>
 				{
 					var subtitleImage = new SubtitleImage(this.subfile.GetBitmap(bitmap.n, bitmap.data), false);
-					return new { subtitleImage, bitmap.n, data = subtitleImage.GetBitmapData() };
+					return new { subtitleImage, bitmap.n };
 				})
 				//Sequential image processing (parallel processing inside)
 				.ForEach(image =>
 				{
-					image.subtitleImage.CreateSubtitleArray(image.data);
 					try
 					{
 						this.parentForm.ImageOCR(image.subtitleImage, this.reportUnknownChar);
@@ -76,7 +78,12 @@ namespace SupRip
 						return false;
 					}
 					this.subfile.UpdateSubtitleText(image.n, image.subtitleImage);
-					this.parentForm.Invoke(this.parentForm.updateProgressDelegate, image.n);
+					if (sw.ElapsedMilliseconds > 200L)
+					{
+						sw.Reset();
+						this.parentForm.Invoke(this.parentForm.updateProgressDelegate, image.n);
+						sw.Start();
+					}
 					return true;
 				});
 

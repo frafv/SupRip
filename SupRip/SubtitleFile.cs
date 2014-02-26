@@ -16,6 +16,8 @@ namespace SupRip
 			Bluray
 		}
 
+		public const int SubtitleImagePadding = 10;
+
 		private SubtitleFile.SubtitleType type;
 		private FileStream supFileStream;
 		private List<SupData> supDatas;
@@ -58,15 +60,15 @@ namespace SupRip
 			while (fs.ReadByte() == 83 && fs.ReadByte() == 80)
 			{
 				SupData supData = new SupData();
-				supData.startTime = fs.LowEndianInt32();
-				supData.startTime /= 90L;
+				supData.StartTime = fs.LowEndianInt32();
+				supData.StartTime /= 90L;
 				fs.LowEndianInt32();
 				long position = fs.Position;
 				fs.LowEndianInt16();
 				long num2 = position + fs.BigEndianInt32();
-				supData.startControlSeq = position + fs.BigEndianInt32();
+				supData.StartControlSeq = position + fs.BigEndianInt32();
 				long position2 = fs.Position;
-				fs.Position = supData.startControlSeq;
+				fs.Position = supData.StartControlSeq;
 				long num3 = 0L;
 				while (fs.Position < num2)
 				{
@@ -94,7 +96,7 @@ namespace SupRip
 							{
 								throw new Exception("timeOfControl is 0 when it should contain the duration");
 							}
-							supData.duration = ((num4 << 10) + 1023) / 90;
+							supData.Duration = ((num4 << 10) + 1023) / 90;
 							break;
 						case 3:
 							throw new Exception("unexpected code 3");
@@ -115,44 +117,45 @@ namespace SupRip
 									int num8 = fs.ReadByte() - 16;
 									int num9 = fs.ReadByte() - 128;
 									int num10 = fs.ReadByte() - 128;
-									supData.hdColorSet[i, 0] = (byte)Math.Min(Math.Max(Math.Round((double)(1.1644f * (float)num8 + 1.596f * (float)num9)), 0.0), 255.0);
-									supData.hdColorSet[i, 1] = (byte)Math.Min(Math.Max(Math.Round((double)(1.1644f * (float)num8 - 0.813f * (float)num9 - 0.391f * (float)num10)), 0.0), 255.0);
-									supData.hdColorSet[i, 2] = (byte)Math.Min(Math.Max(Math.Round((double)(1.1644f * (float)num8 + 2.018f * (float)num10)), 0.0), 255.0);
+									supData.HDColorSet[i, 0] = (byte)Math.Min(Math.Max(Math.Round((double)(1.1644f * (float)num8 + 1.596f * (float)num9)), 0.0), 255.0);
+									supData.HDColorSet[i, 1] = (byte)Math.Min(Math.Max(Math.Round((double)(1.1644f * (float)num8 - 0.813f * (float)num9 - 0.391f * (float)num10)), 0.0), 255.0);
+									supData.HDColorSet[i, 2] = (byte)Math.Min(Math.Max(Math.Round((double)(1.1644f * (float)num8 + 2.018f * (float)num10)), 0.0), 255.0);
 								}
 								break;
 							case 132:
 								for (int j = 0; j < 256; j++)
 								{
-									supData.hdTransparency[j] = (byte)fs.ReadByte();
+									supData.HDTransparency[j] = (byte)fs.ReadByte();
 									if (j == 0)
 									{
-										supData.hdTransparency[j] = 255;
+										supData.HDTransparency[j] = 255;
 									}
 								}
 								break;
 							case 133:
 								fs.Read(array, 0, 3);
-								supData.bitmapPos.X = ((int)array[0] << 4 | (array[1] & 240) >> 4);
-								supData.bitmapPos.Width = ((int)(array[1] & 15) << 8 | (int)array[2]) - supData.bitmapPos.X + 1;
+								int X = ((int)array[0] << 4 | (array[1] & 240) >> 4);
+								int Width = ((int)(array[1] & 15) << 8 | (int)array[2]) - X + 1;
 								fs.Read(array, 0, 3);
-								supData.bitmapPos.Y = ((int)array[0] << 4 | (array[1] & 240) >> 4);
-								supData.bitmapPos.Height = ((int)(array[1] & 15) << 8 | (int)array[2]) - supData.bitmapPos.Y + 1;
-								if (supData.bitmapPos.Width < 0 || supData.bitmapPos.Width > 1920 || supData.bitmapPos.Height < 0 || supData.bitmapPos.Height > 1080)
+								int Y = ((int)array[0] << 4 | (array[1] & 240) >> 4);
+								int Height = ((int)(array[1] & 15) << 8 | (int)array[2]) - Y + 1;
+								if (Width < 0 || Width > 1920 || Height < 0 || Height > 1080)
 								{
 									throw new Exception("subtitle bigger than it should be");
 								}
+								supData.BitmapPos = new Rectangle(X, Y, Width, Height);
 								break;
 							case 134:
-								supData.bitmapStarts[0, 0] = position + fs.BigEndianInt32();
-								supData.bitmapStarts[0, 1] = position + fs.BigEndianInt32();
-								if (supData.bitmapStarts[0, 0] != position2)
+								supData.BitmapStarts[0, 0] = position + fs.BigEndianInt32();
+								supData.BitmapStarts[0, 1] = position + fs.BigEndianInt32();
+								if (supData.BitmapStarts[0, 0] != position2)
 								{
 									throw new Exception(string.Concat(new object[]
 									{
 										"unexpected gap in the subtitle info: end_header = ",
 										position2,
 										", bitmap1 = ",
-										supData.bitmapStarts[0, 0]
+										supData.BitmapStarts[0, 0]
 									}));
 								}
 								break;
@@ -163,16 +166,16 @@ namespace SupRip
 								{
 									throw new Exception("unrecognized block code");
 								}
-								supData.endCount++;
+								supData.EndCount++;
 								break;
 							}
 							break;
 						}
 					}
 				}
-				supData.number = num++;
-				supData.bitmapLengths[0, 0] = supData.bitmapStarts[0, 1] - supData.bitmapStarts[0, 0];
-				supData.bitmapLengths[0, 1] = supData.startControlSeq - supData.bitmapStarts[0, 1];
+				supData.Number = num++;
+				supData.BitmapLengths[0, 0] = supData.BitmapStarts[0, 1] - supData.BitmapStarts[0, 0];
+				supData.BitmapLengths[0, 1] = supData.StartControlSeq - supData.BitmapStarts[0, 1];
 				list.Add(supData);
 				fs.Position = num2;
 			}
@@ -186,16 +189,16 @@ namespace SupRip
 			{
 				if (supData2 != null)
 				{
-					supData2.endTime = current.startTime;
+					supData2.EndTime = current.StartTime;
 					supData2 = null;
 				}
-				if (current.duration == 0)
+				if (current.Duration == 0)
 				{
 					supData2 = current;
 				}
 				else
 				{
-					current.endTime = current.startTime + (long)((ulong)current.duration);
+					current.EndTime = current.StartTime + (long)((ulong)current.Duration);
 				}
 			}
 			this.supFileStream = fs;
@@ -210,7 +213,6 @@ namespace SupRip
 		}
 		private void LoadBluraySup(FileStream fs)
 		{
-			bool flag = false;
 			this.type = SubtitleFile.SubtitleType.Bluray;
 			this.supDatas = new List<SupData>();
 			SupData supData = new SupData();
@@ -233,7 +235,7 @@ namespace SupRip
 					if (num7 == 2)
 					{
 						fs.BigEndianInt16();
-						supData.emptySubtitle = true;
+						supData.EmptySubtitle = true;
 					}
 					else
 					{
@@ -249,10 +251,10 @@ namespace SupRip
 							int num10 = fs.ReadByte() - 16;
 							int num11 = fs.ReadByte() - 128;
 							int num12 = fs.ReadByte() - 128;
-							supData.hdColorSet[num9, 0] = (byte)Math.Min(Math.Max(Math.Round((double)(1.1644f * (float)num10 + 1.596f * (float)num11)), 0.0), 255.0);
-							supData.hdColorSet[num9, 1] = (byte)Math.Min(Math.Max(Math.Round((double)(1.1644f * (float)num10 - 0.813f * (float)num11 - 0.391f * (float)num12)), 0.0), 255.0);
-							supData.hdColorSet[num9, 2] = (byte)Math.Min(Math.Max(Math.Round((double)(1.1644f * (float)num10 + 2.018f * (float)num12)), 0.0), 255.0);
-							supData.hdTransparency[num9] = (byte)fs.ReadByte();
+							supData.HDColorSet[num9, 0] = (byte)Math.Min(Math.Max(Math.Round((double)(1.1644f * (float)num10 + 1.596f * (float)num11)), 0.0), 255.0);
+							supData.HDColorSet[num9, 1] = (byte)Math.Min(Math.Max(Math.Round((double)(1.1644f * (float)num10 - 0.813f * (float)num11 - 0.391f * (float)num12)), 0.0), 255.0);
+							supData.HDColorSet[num9, 2] = (byte)Math.Min(Math.Max(Math.Round((double)(1.1644f * (float)num10 + 2.018f * (float)num12)), 0.0), 255.0);
+							supData.HDTransparency[num9] = (byte)fs.ReadByte();
 						}
 					}
 					break;
@@ -272,14 +274,13 @@ namespace SupRip
 						}
 						int width = fs.BigEndianInt16();
 						int height = fs.BigEndianInt16();
-						if (supData.bitmapStarts[num3, 0] != 0L)
+						if (supData.BitmapStarts[num3, 0] != 0L)
 						{
 							throw new Exception("Unexpected data on multipart subtitle, cont = " + num13);
 						}
-						supData.bitmapPos.Width = width;
-						supData.bitmapPos.Height = height;
-						supData.bitmapStarts[num3, 0] = fs.Position;
-						supData.bitmapLengths[num3, 0] = (long)(num7 - 11);
+						supData.BitmapPos = new Rectangle(supData.BitmapPos.X, supData.BitmapPos.Y, width, height);
+						supData.BitmapStarts[num3, 0] = fs.Position;
+						supData.BitmapLengths[num3, 0] = (long)(num7 - 11);
 						fs.Position += (long)(num7 - 11);
 					}
 					else
@@ -288,16 +289,16 @@ namespace SupRip
 						{
 							throw new Exception("Unexpected continuation value = " + num13);
 						}
-						if (supData.bitmapStarts[num3, 1] != 0L)
+						if (supData.BitmapStarts[num3, 1] != 0L)
 						{
 							throw new Exception("Three part Bluray bitmapdata, didn't think those would exist");
 						}
-						if (supData.bitmapStarts[num3, 0] == 0L)
+						if (supData.BitmapStarts[num3, 0] == 0L)
 						{
-							throw new Exception("Unexpected data on second part of multipart subtitle, start = " + supData.bitmapStarts[num3, 0]);
+							throw new Exception("Unexpected data on second part of multipart subtitle, start = " + supData.BitmapStarts[num3, 0]);
 						}
-						supData.bitmapStarts[num3, 1] = fs.Position;
-						supData.bitmapLengths[num3, 1] = (long)(num7 - 4);
+						supData.BitmapStarts[num3, 1] = fs.Position;
+						supData.BitmapLengths[num3, 1] = (long)(num7 - 4);
 						fs.Position += (long)(num7 - 4);
 					}
 					if ((num13 & 64) != 0)
@@ -309,7 +310,7 @@ namespace SupRip
 				case 22:
 				{
 					int num7 = fs.BigEndianInt16();
-					supData.startTime = (long)((ulong)num4);
+					supData.StartTime = (long)((ulong)num4);
 					fs.BigEndianInt16();
 					fs.BigEndianInt16();
 					fs.ReadByte();
@@ -325,7 +326,7 @@ namespace SupRip
 							num15
 						}));
 					}
-					long arg_116_0 = supData.startTime / 1000L;
+					long arg_116_0 = supData.StartTime / 1000L;
 					if (num15 == 1)
 					{
 						fs.Position += 3L;
@@ -354,26 +355,25 @@ namespace SupRip
 				case 23:
 				{
 					int num7 = fs.BigEndianInt16();
-					supData.numWindows = fs.ReadByte();
-					if (supData.numWindows != 1 && supData.numWindows != 2)
+					supData.NumWindows = fs.ReadByte();
+					if (supData.NumWindows != 1 && supData.NumWindows != 2)
 					{
-						throw new SUPFileFormatException("Number of SUP Window descriptions = " + supData.numWindows);
+						throw new SUPFileFormatException("Number of SUP Window descriptions = " + supData.NumWindows);
 					}
 					fs.Position += 1L;
-					supData.bitmapPos.X = fs.BigEndianInt16();
-					supData.bitmapPos.Y = fs.BigEndianInt16();
-					supData.bitmapPos.Width = fs.BigEndianInt16();
-					supData.bitmapPos.Height = fs.BigEndianInt16();
-					if (supData.numWindows == 2)
+					int X = fs.BigEndianInt16();
+					int Y = fs.BigEndianInt16();
+					int Width = fs.BigEndianInt16();
+					int Height = fs.BigEndianInt16();
+					supData.BitmapPos = new Rectangle(X, Y, Width, Height);
+					if (supData.NumWindows == 2)
 					{
 						fs.Position += 1L;
-						supData.bitmapPos2.X = fs.BigEndianInt16();
-						supData.bitmapPos2.Y = fs.BigEndianInt16();
-						supData.bitmapPos2.Width = fs.BigEndianInt16();
-						supData.bitmapPos2.Height = fs.BigEndianInt16();
-						if (flag)
-						{
-						}
+						X = fs.BigEndianInt16();
+						Y = fs.BigEndianInt16();
+						Width = fs.BigEndianInt16();
+						Height = fs.BigEndianInt16();
+						supData.BitmapPos2 = new Rectangle(X, Y, Width, Height);
 					}
 					break;
 				}
@@ -383,9 +383,9 @@ namespace SupRip
 					{
 						throw new Exception("unknown code");
 					}
-					if (supData.bitmapStarts[0, 0] == 0L)
+					if (supData.BitmapStarts[0, 0] == 0L)
 					{
-						supData.emptySubtitle = true;
+						supData.EmptySubtitle = true;
 					}
 					int num7 = fs.BigEndianInt16();
 					if (num7 != 0)
@@ -398,20 +398,20 @@ namespace SupRip
 				}
 				if (flag2)
 				{
-					if (supData.emptySubtitle)
+					if (supData.EmptySubtitle)
 					{
 						if (supData2 != null)
 						{
-							supData2.endTime = supData.startTime - 1L;
+							supData2.EndTime = supData.StartTime - 1L;
 						}
 					}
 					else
 					{
-						if (supData2 != null && supData2.endTime == 0L)
+						if (supData2 != null && supData2.EndTime == 0L)
 						{
-							supData2.endTime = supData.startTime - 1L;
+							supData2.EndTime = supData.StartTime - 1L;
 						}
-						supData.number = num2++;
+						supData.Number = num2++;
 						this.supDatas.Add(supData);
 						supData2 = supData;
 					}
@@ -425,9 +425,9 @@ namespace SupRip
 				fs.Close();
 				throw new SUPFileFormatException();
 			}
-			if (supData.bitmapStarts[0, 0] == 0L && supData.startTime != 0L && supData2 != null)
+			if (supData.BitmapStarts[0, 0] == 0L && supData.StartTime != 0L && supData2 != null)
 			{
-				supData2.endTime = supData.startTime - 1L;
+				supData2.EndTime = supData.StartTime - 1L;
 			}
 			this.supFileStream = fs;
 			if (AppOptions.combineSubtitles)
@@ -445,9 +445,9 @@ namespace SupRip
 			LinkedList<SupData> linkedList = new LinkedList<SupData>();
 			foreach (SupData current in this.supDatas)
 			{
-				if (supData != null && supData.bitmapLengths[0, 0] == current.bitmapLengths[0, 0] && supData.bitmapLengths[0, 1] == current.bitmapLengths[0, 1] && supData.bitmapPos == current.bitmapPos && Math.Abs(current.startTime - supData.endTime) < 100L && this.CompareBitmaps(current, supData))
+				if (supData != null && supData.BitmapLengths[0, 0] == current.BitmapLengths[0, 0] && supData.BitmapLengths[0, 1] == current.BitmapLengths[0, 1] && supData.BitmapPos == current.BitmapPos && Math.Abs(current.StartTime - supData.EndTime) < 100L && this.CompareBitmaps(current, supData))
 				{
-					supData.endTime = current.endTime;
+					supData.EndTime = current.EndTime;
 					linkedList.AddLast(current);
 				}
 				else
@@ -690,15 +690,16 @@ namespace SupRip
 			fs.Write2Bits(3);
 		}
 
-		private Bitmap GetHdBitmap(SupData data, byte[] buffer)
+		private SubtitleBitmap GetHdBitmap(SupData data, byte[] buffer, int padding, bool transparent)
 		{
-			int width = data.bitmapPos.Width;
-			int height = data.bitmapPos.Height;
-			byte[] array = new byte[width * height * 4];
+			int width = data.BitmapPos.Width;
+			int width2 = width + padding * 2;
+			int height = data.BitmapPos.Height;
+			byte[] array = new byte[width2 * height * 4];
 			var memoryStream = new SubtitleImageStream(buffer);
 			bool flag = false;
 			int i = 0;
-			int num = width * 4;
+			int num = width2 * 4;
 			for (int j = 0; j < 2; j++)
 			{
 				long num2;
@@ -706,13 +707,13 @@ namespace SupRip
 				if (j == 0)
 				{
 					memoryStream.Position = 0L;
-					num2 = data.bitmapLengths[0, 0];
+					num2 = data.BitmapLengths[0, 0];
 					num3 = 0;
 				}
 				else
 				{
-					memoryStream.Position = data.bitmapLengths[0, 0];
-					num2 = data.bitmapLengths[0, 0] + data.bitmapLengths[0, 1];
+					memoryStream.Position = data.BitmapLengths[0, 0];
+					num2 = data.BitmapLengths[0, 0] + data.BitmapLengths[0, 1];
 					num3 = 1;
 				}
 				while (num3 < height && memoryStream.Position < num2)
@@ -750,7 +751,7 @@ namespace SupRip
 							num4 = (num4 << 2) + memoryStream.Read2Bits();
 							if (num4 == 0)
 							{
-								num4 = data.bitmapPos.Width - i;
+								num4 = data.BitmapPos.Width - i;
 								flag = true;
 							}
 							else
@@ -762,10 +763,11 @@ namespace SupRip
 					int num6 = i + num4;
 					while (i < num6)
 					{
-						array[num3 * num + i * 4] = data.hdColorSet[num5, 0];
-						array[num3 * num + i * 4 + 1] = data.hdColorSet[num5, 1];
-						array[num3 * num + i * 4 + 2] = data.hdColorSet[num5, 2];
-						array[num3 * num + i * 4 + 3] = (byte)(255 - data.hdTransparency[num5]);
+						byte t = data.HDTransparency[num5];
+						array[num3 * num + i * 4 + padding * 4] = transparent ? data.HDColorSet[num5, 0] : (byte)(data.HDColorSet[num5, 0] * t / 255);
+						array[num3 * num + i * 4 + padding * 4 + 1] = transparent ? data.HDColorSet[num5, 1] : (byte)(data.HDColorSet[num5, 1] * t / 255);
+						array[num3 * num + i * 4 + padding * 4 + 2] = transparent ? data.HDColorSet[num5, 2] : (byte)(data.HDColorSet[num5, 2] * t / 255);
+						array[num3 * num + i * 4 + padding * 4 + 3] = transparent ? t : byte.MaxValue;
 						i++;
 					}
 					if (flag || i >= width)
@@ -777,24 +779,18 @@ namespace SupRip
 					}
 				}
 			}
-			Bitmap bitmap = new Bitmap(width, height, PixelFormat.Format32bppArgb);
-			BitmapData bitmapData = bitmap.LockBits(new Rectangle(0, 0, bitmap.Width, bitmap.Height), ImageLockMode.WriteOnly, bitmap.PixelFormat);
-			IntPtr scan = bitmapData.Scan0;
-			Marshal.Copy(array, 0, scan, array.Length);
-			bitmap.UnlockBits(bitmapData);
-			memoryStream.Close();
-			return bitmap;
+			return new SubtitleBitmap(array, width2, height);
 		}
 		private byte[] ReadIntoMemory(FileStream fs, SupData data)
 		{
 			byte[] array;
 			if (this.type == SubtitleFile.SubtitleType.Bluray)
 			{
-				array = new byte[data.bitmapLengths[0, 0] + data.bitmapLengths[0, 1]];
-				fs.Position = data.bitmapStarts[0, 0];
-				fs.Read(array, 0, (int)data.bitmapLengths[0, 0]);
-				fs.Position = data.bitmapStarts[0, 1];
-				fs.Read(array, (int)data.bitmapLengths[0, 0], (int)data.bitmapLengths[0, 1]);
+				array = new byte[data.BitmapLengths[0, 0] + data.BitmapLengths[0, 1]];
+				fs.Position = data.BitmapStarts[0, 0];
+				fs.Read(array, 0, (int)data.BitmapLengths[0, 0]);
+				fs.Position = data.BitmapStarts[0, 1];
+				fs.Read(array, (int)data.BitmapLengths[0, 0], (int)data.BitmapLengths[0, 1]);
 			}
 			else
 			{
@@ -802,8 +798,8 @@ namespace SupRip
 				{
 					throw new Exception("trying to get an image without a type set");
 				}
-				array = new byte[data.startControlSeq - data.bitmapStarts[0, 0]];
-				fs.Position = data.bitmapStarts[0, 0];
+				array = new byte[data.StartControlSeq - data.BitmapStarts[0, 0]];
+				fs.Position = data.BitmapStarts[0, 0];
 				fs.Read(array, 0, array.Length);
 			}
 			return array;
@@ -814,25 +810,25 @@ namespace SupRip
 			return this.ReadIntoMemory(this.supFileStream, this.supDatas[n]);
 		}
 
-		internal Bitmap GetBitmap(int n, byte[] data)
+		internal SubtitleBitmap GetBitmap(int n, byte[] data, int padding = SubtitleImagePadding, bool transparent = false)
 		{
-			return GetBitmap(this.supDatas[n], data);
+			return GetBitmap(this.supDatas[n], data, padding, transparent);
 		}
 
-		public Bitmap GetBitmap(SupData data)
+		public SubtitleBitmap GetBitmap(SupData data, int padding = SubtitleImagePadding, bool transparent = false)
 		{
-			return GetBitmap(data, this.ReadIntoMemory(this.supFileStream, data));
+			return GetBitmap(data, this.ReadIntoMemory(this.supFileStream, data), padding, transparent);
 		}
 
-		private Bitmap GetBitmap(SupData data, byte[] buffer)
+		private SubtitleBitmap GetBitmap(SupData data, byte[] buffer, int padding, bool transparent)
 		{
 			if (this.type == SubtitleFile.SubtitleType.Bluray)
 			{
-				return this.GetBlurayBitmap(data, buffer);
+				return this.GetBlurayBitmap(data, buffer, padding, transparent);
 			}
 			if (this.type == SubtitleFile.SubtitleType.Hddvd)
 			{
-				return this.GetHdBitmap(data, buffer);
+				return this.GetHdBitmap(data, buffer, padding, transparent);
 			}
 			throw new Exception("trying to get an image without a type set");
 		}
@@ -849,15 +845,17 @@ namespace SupRip
 			}
 			return a.BitmapHash == b.BitmapHash;
 		}
-		private Bitmap GetBlurayBitmap(SupData data, byte[] buffer)
+
+		private SubtitleBitmap GetBlurayBitmap(SupData data, byte[] buffer, int padding, bool transparent)
 		{
-			int width = data.bitmapPos.Width;
-			int height = data.bitmapPos.Height;
-			byte[] array = new byte[width * height * 4];
+			int width = data.BitmapPos.Width;
+			int width2 = width + padding * 2;
+			int height = data.BitmapPos.Height;
+			byte[] array = new byte[width2 * height * 4];
 			bool flag = false;
 			int i = 0;
 			int j = 0;
-			int num = width * 4;
+			int num = width2 * 4;
 			var memoryStream = new SubtitleImageStream(buffer);
 			int num2 = 0;
 			while (j < height)
@@ -931,10 +929,11 @@ namespace SupRip
 					}
 					while (i < num6)
 					{
-						array[j * num + i * 4] = data.hdColorSet[num3, 0];
-						array[j * num + i * 4 + 1] = data.hdColorSet[num3, 1];
-						array[j * num + i * 4 + 2] = data.hdColorSet[num3, 2];
-						array[j * num + i * 4 + 3] = data.hdTransparency[num3];
+						byte t = data.HDTransparency[num3];
+						array[j * num + i * 4 + padding * 4] = transparent ? data.HDColorSet[num3, 0] : (byte)(data.HDColorSet[num3, 0] * t / 255);
+						array[j * num + i * 4 + padding * 4 + 1] = transparent ? data.HDColorSet[num3, 1] : (byte)(data.HDColorSet[num3, 1] * t / 255);
+						array[j * num + i * 4 + padding * 4 + 2] = transparent ? data.HDColorSet[num3, 2] : (byte)(data.HDColorSet[num3, 2] * t / 255);
+						array[j * num + i * 4 + padding * 4 + 3] = transparent ? t : byte.MaxValue;
 						i++;
 					}
 				}
@@ -949,17 +948,14 @@ namespace SupRip
 					j++;
 				}
 			}
-			Bitmap bitmap = new Bitmap(width, height, PixelFormat.Format32bppArgb);
-			BitmapData bitmapData = bitmap.LockBits(new Rectangle(0, 0, bitmap.Width, bitmap.Height), ImageLockMode.WriteOnly, bitmap.PixelFormat);
-			IntPtr scan = bitmapData.Scan0;
-			Marshal.Copy(array, 0, scan, array.Length);
-			bitmap.UnlockBits(bitmapData);
-			return bitmap;
+			return new SubtitleBitmap(array, width2, height);
 		}
-		public SubtitleImage GetSubtitleImage(int n)
+
+		public SubtitleImage GetSubtitleImage(int n, int padding = SubtitleImagePadding, bool transparent = false)
 		{
-			return new SubtitleImage(this.GetBitmap(this.supDatas[n]));
+			return new SubtitleImage(this.GetBitmap(this.supDatas[n], padding, transparent));
 		}
+
 		public void UpdateSubtitleText(int n, SubtitleImage si)
 		{
 			this.supDatas[n].Text = si.GetText();
@@ -1107,8 +1103,8 @@ namespace SupRip
 			foreach (SupData current in this.supDatas)
 			{
 				streamWriter.WriteLine("\t<subpicture>");
-				streamWriter.WriteLine("\t\t<start>" + current.startTime.ToString() + "</start>");
-				streamWriter.WriteLine("\t\t<end>" + current.endTime.ToString() + "</end>");
+				streamWriter.WriteLine("\t\t<start>" + current.StartTime.ToString() + "</start>");
+				streamWriter.WriteLine("\t\t<end>" + current.EndTime.ToString() + "</end>");
 				streamWriter.WriteLine("\t\t<forced>" + (current.Forced ? "true" : "false") + "</forced>");
 				streamWriter.WriteLine("\t</subpicture>");
 			}

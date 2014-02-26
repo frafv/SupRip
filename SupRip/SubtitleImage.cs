@@ -339,7 +339,7 @@ namespace SupRip
 				}
 			}
 
-			public SubtitleLetter[] FindLetters(byte[,] workArray, int[,] nextArray, byte pixelLevel1, byte pixelLevel2)
+			public SubtitleLetter[] FindLetters(byte[,] workArray, int[,] nextArray, byte pixelLevel1, byte pixelLevel2, bool parallel = true)
 			{
 				var spaces = FindSpaces(workArray, nextArray, pixelLevel1, pixelLevel2);
 #if DEBUG
@@ -347,14 +347,16 @@ namespace SupRip
 					new PointF(_l.Left[_k], _k + this.Start - 1), new PointF(_l.Right[_k], _k + this.Start - 1) })))
 					this.debugPoints.AddLast(_p);
 #endif
-				var list = ParallelEnumerable.Range(-1, spaces.Length + 1).AsOrdered().SelectMany(index =>
-					FindLetter(index >= 0 ? spaces[index] : null, index < spaces.Length - 1 ? spaces[index + 1] : null, workArray, nextArray)).ToList();
+				Func<int, IEnumerable<SubtitleLetter>> procLetter = index =>
+					FindLetter(index >= 0 ? spaces[index] : null, index < spaces.Length - 1 ? spaces[index + 1] : null, workArray, nextArray);
+				var list = !parallel ? Enumerable.Range(-1, spaces.Length + 1).SelectMany(procLetter).ToList() :
+					ParallelEnumerable.Range(-1, spaces.Length + 1).AsOrdered().SelectMany(procLetter).ToList();
 				var first = this.Num != 0 && list.Count > 1 ? list[1] : list.FirstOrDefault();
 				var last = list.LastOrDefault();
 				if (first != null && first.Text == " ") list.Remove(first);
 				if (last != null && last.Text == " ") list.RemoveAt(list.Count - 1);
 				var letters = list.ToArray();
-				AdjustItalic(letters);
+				AdjustItalic(letters, parallel);
 				return letters;
 			}
 
@@ -402,7 +404,7 @@ namespace SupRip
 				}
 			}
 
-			public void AdjustItalic(SubtitleLetter[] letters)
+			public void AdjustItalic(SubtitleLetter[] letters, bool parallel = true)
 			{
 				double angle = GetItalicAngle(letters);
 				if (angle == 0.0 || Double.IsNaN(angle)) return;
@@ -450,11 +452,11 @@ namespace SupRip
 				}
 				if (italic.Any() && !hasRegilar)
 					italic = letters.Where(l => l.Text != "\r\n").ToList();
-				italic.AsParallel().ForAll(letter =>
+				italic.ForEach(letter =>
 				{
 					letter.Angle = angle;
 					letter.ApplyAngle();
-				});
+				}, parallel);
 			}
 		}
 
@@ -465,8 +467,7 @@ namespace SupRip
 		public byte maxPixelLevel = 255;
 		public byte minPixelLevel = 0;
 
-		private Rectangle subtitleBorders;
-		public Bitmap subtitleBitmap;
+		public SubtitleBitmap SubtitleBitmap;
 		/// <summary>
 		/// Pixels bitmap
 		/// </summary>
@@ -482,17 +483,12 @@ namespace SupRip
 		private static int angleCount;
 		private static object italicSync = new object();
 		public static double italicAngle = Double.NaN;
-		public SubtitleImage(Bitmap source) : this(source, true) { }
+		public SubtitleImage(SubtitleBitmap source) : this(source, true) { }
 
-		internal SubtitleImage(Bitmap source, bool create)
+		internal SubtitleImage(SubtitleBitmap source, bool parallel)
 		{
-			this.subtitleBitmap = new Bitmap(source.Width + 20, source.Height, PixelFormat.Format32bppArgb);
-			Graphics graphics = Graphics.FromImage(this.subtitleBitmap);
-			graphics.FillRectangle(new SolidBrush(Color.Black), 0, 0, source.Width + 20, source.Height);
-			graphics.DrawImage(source, new Point(10, 0));
-			graphics.Dispose();
-			if (create)
-				this.CreateSubtitleArray(GetBitmapData());
+			this.SubtitleBitmap = source;
+			this.CreateSubtitleArray(parallel);
 		}
 
 		private static void FindNextRange(byte[,] image, int [,] nextArray, int line, byte pixelLevel1, byte pixelLevel2)
@@ -523,35 +519,17 @@ namespace SupRip
 			}
 		}
 
-		internal byte[] GetBitmapData()
+		private void CreateSubtitleArray(bool parallel)
 		{
-			int lineWidth = this.subtitleBitmap.Size.Width;
-			int columnHeight = this.subtitleBitmap.Height;
-			byte[] array;
-			BitmapData bitmapData = this.subtitleBitmap.LockBits(new Rectangle(0, 0, lineWidth, columnHeight), ImageLockMode.ReadOnly, this.subtitleBitmap.PixelFormat);
-			try
-			{
-				array = new byte[lineWidth * columnHeight * 4];
-				IntPtr scan = bitmapData.Scan0;
-				Marshal.Copy(scan, array, 0, array.Length);
-			}
-			finally
-			{
-				this.subtitleBitmap.UnlockBits(bitmapData);
-			}
-			return array;
-		}
-
-		internal void CreateSubtitleArray(byte[] array)
-		{
-			int lineWidth = this.subtitleBitmap.Size.Width;
-			int columnHeight = this.subtitleBitmap.Height;
+			int lineWidth = this.SubtitleBitmap.Width;
+			int columnHeight = this.SubtitleBitmap.Height;
+			byte[] array = (byte[])this.SubtitleBitmap;
 			this.subtitleArray = new byte[columnHeight, lineWidth];
-			this.nextArray = new int[this.subtitleArray.GetLength(0), this.subtitleArray.GetLength(1)];
+			this.nextArray = new int[columnHeight, lineWidth];
 			this.maxPixelLevel = 0;
 			this.minPixelLevel = 255;
 			var maxPixelSync = new object();
-			ParallelEnumerable.Range(0, columnHeight).ForAll(i =>
+			columnHeight.RangeForAll(i =>
 			{
 				int num = i * lineWidth * 4;
 				for (int j = 0; j < lineWidth; j++)
@@ -559,7 +537,7 @@ namespace SupRip
 					byte b = (byte)((int)(((int)array[num++] + (int)array[num++] + (int)array[num++]) * (int)array[num++]) / 768);
 					this.subtitleArray[i, j] = b < pixelLimitAsSet / 2 ? (byte)0 : b;
 					if (b > this.maxPixelLevel || b < this.minPixelLevel)
-						lock(maxPixelSync)
+						lock (maxPixelSync)
 						{
 							if (b > this.maxPixelLevel)
 								this.maxPixelLevel = b;
@@ -567,7 +545,7 @@ namespace SupRip
 								this.minPixelLevel = b;
 						}
 				}
-			});
+			}, parallel);
 			if (this.maxPixelLevel == this.minPixelLevel)
 			{
 				this.minPixelLevel = 0;
@@ -575,14 +553,12 @@ namespace SupRip
 			}
 			byte pixelLevel1 = (byte)((maxPixelLevel - minPixelLevel) >> 2 + minPixelLevel);
 			byte pixelLevel2 = (byte)(maxPixelLevel - ((maxPixelLevel - minPixelLevel) >> 2));
-			ParallelEnumerable.Range(0, columnHeight).ForAll(i =>
-			{
-				FindNextRange(this.subtitleArray, this.nextArray, i, pixelLevel1, pixelLevel2);
-			});
+			columnHeight.RangeForAll(i =>
+				FindNextRange(this.subtitleArray, this.nextArray, i, pixelLevel1, pixelLevel2), parallel);
 			if (AppOptions.contrast != 0)
 			{
 				double fact = 0.5 + (double)(AppOptions.contrast / 5);
-				ParallelEnumerable.Range(0, columnHeight).ForAll(k =>
+				columnHeight.RangeForAll(k =>
 				{
 					for (int l = 0; l < lineWidth; l++)
 					{
@@ -593,7 +569,7 @@ namespace SupRip
 			DateTime now = DateTime.Now;
 			this.textLines = TextLine.Find(this.nextArray);
 
-			this.letters = this.textLines.SelectMany(line => line.FindLetters(this.subtitleArray, this.nextArray, pixelLevel1, pixelLevel2)).ToArray();
+			this.letters = this.textLines.SelectMany(line => line.FindLetters(this.subtitleArray, this.nextArray, pixelLevel1, pixelLevel2, parallel)).ToArray();
 #if DEBUG
 			this.debugPoints = new LinkedList<PointF>(this.textLines.SelectMany(_l => _l.debugPoints));
 			this.debugLines = new LinkedList<PointF[]>(this.textLines.SelectMany(_l => _l.debugLines));
@@ -607,118 +583,6 @@ namespace SupRip
 			double num = ((double)x - 128.0) * 5.0 / 128.0;
 			double num2 = 1.0 / (1.0 + Math.Pow(Math.E, -num * fact));
 			return (byte)(num2 * 256.0);
-		}
-
-		private void FindBorders()
-		{
-			if (this.subtitleBitmap == null)
-			{
-				throw new Exception("Trying to use FindBorders on a null image");
-			}
-			if (this.subtitleBitmap.PixelFormat != PixelFormat.Format32bppArgb)
-			{
-				throw new Exception("Pixel format isn't Format32bppArgb");
-			}
-			BitmapData bitmapData = this.subtitleBitmap.LockBits(new Rectangle(0, 0, this.subtitleBitmap.Width, this.subtitleBitmap.Height), ImageLockMode.ReadOnly, this.subtitleBitmap.PixelFormat);
-			byte[] array = new byte[this.subtitleBitmap.Size.Width * this.subtitleBitmap.Size.Height * 4];
-			IntPtr scan = bitmapData.Scan0;
-			Marshal.Copy(scan, array, 0, array.Length);
-			this.subtitleBitmap.UnlockBits(bitmapData);
-			int num = -1;
-			int num2 = -1;
-			int num3 = -1;
-			int num4 = -1;
-			int num5 = 20;
-			for (int i = 0; i < this.subtitleBitmap.Size.Height; i += num5)
-			{
-				if (this.LineContainsPixels(array, this.subtitleBitmap.Size.Width, i, 200))
-				{
-					if (num5 == 1)
-					{
-						num = i;
-						break;
-					}
-					if (num5 == 4)
-					{
-						i -= num5;
-						num5 = 1;
-					}
-					else
-					{
-						i -= num5 * 2;
-						num5 = 4;
-					}
-				}
-			}
-			num5 = 4;
-			for (int j = this.subtitleBitmap.Size.Height - 1; j > num; j -= num5)
-			{
-				if (this.LineContainsPixels(array, this.subtitleBitmap.Size.Width, j, 200))
-				{
-					if (num5 == 1)
-					{
-						num2 = j;
-						break;
-					}
-					j += num5;
-					num5 = 1;
-				}
-			}
-			num5 = 4;
-			for (int k = 0; k < this.subtitleBitmap.Size.Width; k += num5)
-			{
-				if (this.ColumnContainsPixels(array, this.subtitleBitmap.Size.Width, k, 200))
-				{
-					if (num5 == 1)
-					{
-						num3 = k;
-						break;
-					}
-					k -= num5;
-					num5 = 1;
-				}
-			}
-			num5 = 4;
-			for (int l = this.subtitleBitmap.Size.Width - 1; l > num3; l -= num5)
-			{
-				if (this.ColumnContainsPixels(array, this.subtitleBitmap.Size.Width, l, 200))
-				{
-					if (num5 == 1)
-					{
-						num4 = l;
-						break;
-					}
-					l += num5;
-					num5 = 1;
-				}
-			}
-			if (num == -1 || num2 == -1 || num3 == -1 || num4 == -1)
-			{
-				throw new SubtitleImage.NoSubtitleTextException();
-			}
-			this.subtitleBorders = new Rectangle(num3, num, num4 - num3, num2 - num);
-		}
-		private bool LineContainsPixels(byte[] bytes, int w, int line, int limit)
-		{
-			for (int i = line * w * 4; i < (line + 1) * w * 4; i += 4)
-			{
-				if (((int)bytes[i] > limit || (int)bytes[i + 1] > limit || (int)bytes[i + 2] > limit) && bytes[i + 3] > 0)
-				{
-					return true;
-				}
-			}
-			return false;
-		}
-		private bool ColumnContainsPixels(byte[] bytes, int w, int column, int limit)
-		{
-			for (int i = column * 4; i < bytes.Length; i += w * 4)
-			{
-				if (((int)bytes[i] > limit || (int)bytes[i + 1] > limit || (int)bytes[i + 2] > limit) && bytes[i + 3] > 0)
-				{
-					return true;
-				}
-			}
-			return false;
 		}
 
 		public string GetText()
@@ -759,28 +623,24 @@ namespace SupRip
 
 		public Bitmap GetBitmap()
 		{
-			int num = this.subtitleBitmap.Height;
-			int num2 = this.subtitleBitmap.Width;
-			Bitmap bitmap = new Bitmap(num2, num, PixelFormat.Format32bppArgb);
-			BitmapData bitmapData = bitmap.LockBits(new Rectangle(0, 0, bitmap.Width, bitmap.Height), ImageLockMode.WriteOnly, bitmap.PixelFormat);
-			IntPtr scan = bitmapData.Scan0;
-			byte[] array = new byte[this.subtitleBitmap.Width * this.subtitleBitmap.Height * 4];
-			int num3 = 0;
-			for (int i = 0; i < num; i++)
+			int height = this.subtitleArray.GetLength(0);
+			int width = this.subtitleArray.GetLength(1);
+			byte[] array = new byte[width * height * 4];
+			int k = 0;
+			for (int i = 0; i < height; i++)
 			{
-				for (int j = 0; j < num2; j++)
+				for (int j = 0; j < width; j++)
 				{
 					byte level = this.subtitleArray[i, j];
-					array[num3++] = level;
-					array[num3++] = level;
-					array[num3++] = level;
-					array[num3++] = 255;
+					array[k++] = level;
+					array[k++] = level;
+					array[k++] = level;
+					array[k++] = 255;
 				}
 			}
-			Marshal.Copy(array, 0, scan, array.Length);
-			bitmap.UnlockBits(bitmapData);
-			return bitmap;
+			return new SubtitleBitmap(array, width, height);
 		}
+
 		public void FixSpaces()
 		{
 			bool flag = false;
