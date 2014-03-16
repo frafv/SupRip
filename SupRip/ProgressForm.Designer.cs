@@ -38,6 +38,7 @@
 			// 
 			resources.ApplyResources(this.progressBar, "progressBar");
 			this.progressBar.Name = "progressBar";
+			this.progressBar.Style = System.Windows.Forms.ProgressBarStyle.Continuous;
 			// 
 			// cancelButton
 			// 
@@ -60,9 +61,12 @@
 			this.Controls.Add(this.numLabel);
 			this.Controls.Add(this.cancelButton);
 			this.Controls.Add(this.progressBar);
+			this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedToolWindow;
 			this.MaximizeBox = false;
 			this.MinimizeBox = false;
 			this.Name = "ProgressForm";
+			this.ShowInTaskbar = false;
+			this.FormClosing += new System.Windows.Forms.FormClosingEventHandler(this.ProgressForm_FormClosing);
 			this.ResumeLayout(false);
 			this.PerformLayout();
 

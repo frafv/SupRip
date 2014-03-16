@@ -858,6 +858,13 @@ namespace SupRip
 			int num = width2 * 4;
 			var memoryStream = new SubtitleImageStream(buffer);
 			int num2 = 0;
+			for (int j2 = 0; j2 < height; j2++)
+			{
+				for (int i2 = 0; i2 < padding; i2++)
+					array[j2 * num + i2 * 4 + 3] = 255;
+				for (int i2 = width + padding; i2 < width2; i2++)
+					array[j2 * num + i2 * 4 + 3] = 255;
+			}
 			while (j < height)
 			{
 				byte b = (byte)memoryStream.ReadByte();

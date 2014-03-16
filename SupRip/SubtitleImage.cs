@@ -313,22 +313,25 @@ namespace SupRip
 				{
 					Rectangle rectangle = new Rectangle(letterLeft + 1, start + this.Start - 1, letterRight - letterLeft - 1, end - start + 1);
 #if DEBUG
-					if (space != null)
+					if (this.debugPoints.First != null)
 					{
-						float x1, x2; bool e;
-						SubtitleLetter.CalcAngle(space.Right.Skip(start).Take(rectangle.Height).ToArray(), true, out x1, out x2, out e);
-						lock (this.debugLines)
+						if (space != null)
 						{
-							this.debugLines.AddLast(new PointF[]{new PointF(x1, rectangle.Top), new PointF(x2, rectangle.Bottom-1)});
+							float x1, x2; bool e;
+							SubtitleLetter.CalcAngle(space.Right.Skip(start).Take(rectangle.Height).ToArray(), true, out x1, out x2, out e);
+							lock (this.debugLines)
+							{
+								this.debugLines.AddLast(new PointF[] { new PointF(x1, rectangle.Top), new PointF(x2, rectangle.Bottom - 1) });
+							}
 						}
-					}
-					if (next != null)
-					{
-						float x3, x4; bool e;
-						SubtitleLetter.CalcAngle(next.Left.Skip(start).Take(rectangle.Height).ToArray(), false, out x3, out x4, out e);
-						lock (this.debugLines)
+						if (next != null)
 						{
-							this.debugLines.AddLast(new PointF[] { new PointF(x3, rectangle.Top), new PointF(x4, rectangle.Bottom - 1) });
+							float x3, x4; bool e;
+							SubtitleLetter.CalcAngle(next.Left.Skip(start).Take(rectangle.Height).ToArray(), false, out x3, out x4, out e);
+							lock (this.debugLines)
+							{
+								this.debugLines.AddLast(new PointF[] { new PointF(x3, rectangle.Top), new PointF(x4, rectangle.Bottom - 1) });
+							}
 						}
 					}
 #endif
@@ -343,9 +346,12 @@ namespace SupRip
 			{
 				var spaces = FindSpaces(workArray, nextArray, pixelLevel1, pixelLevel2);
 #if DEBUG
-				foreach (var _p in spaces.SelectMany(_l => Enumerable.Range(1, _l.Height - 1).SelectMany(_k => new PointF[] {
+				if (parallel)
+				{
+					foreach (var _p in spaces.SelectMany(_l => Enumerable.Range(1, _l.Height - 1).SelectMany(_k => new PointF[] {
 					new PointF(_l.Left[_k], _k + this.Start - 1), new PointF(_l.Right[_k], _k + this.Start - 1) })))
-					this.debugPoints.AddLast(_p);
+						this.debugPoints.AddLast(_p);
+				}
 #endif
 				Func<int, IEnumerable<SubtitleLetter>> procLetter = index =>
 					FindLetter(index >= 0 ? spaces[index] : null, index < spaces.Length - 1 ? spaces[index + 1] : null, workArray, nextArray);
@@ -571,8 +577,11 @@ namespace SupRip
 
 			this.letters = this.textLines.SelectMany(line => line.FindLetters(this.subtitleArray, this.nextArray, pixelLevel1, pixelLevel2, parallel)).ToArray();
 #if DEBUG
-			this.debugPoints = new LinkedList<PointF>(this.textLines.SelectMany(_l => _l.debugPoints));
-			this.debugLines = new LinkedList<PointF[]>(this.textLines.SelectMany(_l => _l.debugLines));
+			if (parallel)
+			{
+				this.debugPoints = new LinkedList<PointF>(this.textLines.SelectMany(_l => _l.debugPoints));
+				this.debugLines = new LinkedList<PointF[]>(this.textLines.SelectMany(_l => _l.debugLines));
+			}
 #endif
 			//this.alternativeLetters = this.FindLetters(this.uncorrectedArray, true);
 			Debugger.lettersTime += (DateTime.Now - now).TotalMilliseconds;

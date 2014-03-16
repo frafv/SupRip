@@ -110,7 +110,7 @@ namespace SupRip
 			{
 				if ((l.Hash | current.FontMask) == current.FontHash)
 				{
-					int num = current.Matches(l);
+					int num = current.Matches(l, tolerance);
 					if (num == 0)
 					{
 						sortedList.Add(num, current);

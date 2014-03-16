@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
@@ -8,6 +7,8 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Windows.Forms;
+using Windows7.DesktopIntegration;
+using Windows7.DesktopIntegration.WindowsForms;
 
 namespace SupRip
 {
@@ -244,8 +245,10 @@ namespace SupRip
 
 		private void ImageOCR(SubtitleImage si)
 		{
+			this.SetTaskbarProgressState(Windows7Taskbar.ThumbnailProgressState.Indeterminate);
 			this.ImageOCR(si, false);
 			si.FixSpaces();
+			this.SetTaskbarProgressState(Windows7Taskbar.ThumbnailProgressState.NoProgress);
 		}
 
 		internal void ImageOCR(SubtitleImage si, bool reportUnknownCharacter)
@@ -258,8 +261,7 @@ namespace SupRip
 			si.letters.Where(current => current.Text == null).AsParallel().WithExecutionMode(ParallelExecutionMode.ForceParallelism).ForAll(current =>
 			{
 				DateTime now = DateTime.Now;
-				SubtitleLetter subtitleLetter = this.fonts.FindMatch(current,
-					current.Angle == 0.0 ? AppOptions.similarityTolerance * 100 : AppOptions.similarityTolerance * 1000);
+				SubtitleLetter subtitleLetter = this.fonts.FindMatch(current, AppOptions.similarityTolerance * 100);
 				Debugger.scanTime += (DateTime.Now - now).TotalMilliseconds;
 				if (subtitleLetter != null)
 				{
@@ -507,7 +509,13 @@ namespace SupRip
 				this.subtitleImageRectangle = new Rectangle(0, (this.subtitlePictureBox.Height - (int)num6) / 2, this.subtitlePictureBox.Width, this.subtitlePictureBox.Height - (this.subtitlePictureBox.Height - (int)num6));
 			}
 			this.subtitlePictureBox.Image = bitmap;
-			if (this.activeLetter != null)
+			UpdateThumbnailClip(bitmap);
+			if (this.activeLetter == null)
+			{
+				this.letterPictureBox.Image = null;
+				this.letterOKButton.Enabled = false;
+			}
+			else
 			{
 				var bitmap2 = this.activeLetter.GetBitmap();
 				this.letterPictureBox.Image = bitmap2;
@@ -527,11 +535,47 @@ namespace SupRip
 					}
 				}
 #endif
+			}
+		}
+
+		private void UpdateThumbnailClip(Image bitmap)
+		{
+			if (!Windows7Taskbar.Supported) return;
+			if (bitmap == null)
+			{
+				UpdateThumbnailClip();
 				return;
 			}
-			this.letterPictureBox.Image = null;
-			this.letterOKButton.Enabled = false;
+			double zoom = Math.Min((double)subtitlePictureBox.Width / (double)bitmap.Width,
+				(double)subtitlePictureBox.Height / (double)bitmap.Height);
+			var clipsize = zoom < 1.0 ? subtitlePictureBox.Size : new Size((int)(bitmap.Width * zoom), (int)(bitmap.Height * zoom));
+			var clippoint = this.PointToClient(subtitlePictureBox.PointToScreen(Point.Empty));
+			if (zoom >= 1.0)
+			{
+				clippoint.X += (int)((subtitlePictureBox.Width - bitmap.Width * zoom) / 2);
+				clippoint.Y += (int)((subtitlePictureBox.Height - bitmap.Height * zoom) / 2);
+			}
+			this.SetThumbnailClip(new Rectangle(clippoint, clipsize));
 		}
+
+		private void UpdateThumbnailClip(Control control)
+		{
+			if (control.Parent is TabPage)
+			{
+				var mainTab = mainTabControl.TabPages[0];
+				this.SetThumbnailClip(new Rectangle(this.PointToClient(mainTab.PointToScreen(control.Location)), control.Size));
+			}
+			else
+			{
+				this.SetThumbnailClip(this.RectangleToClient(control.RectangleToScreen(control.ClientRectangle)));
+			}
+		}
+
+		private void UpdateThumbnailClip()
+		{
+			this.SetThumbnailClip(this.ClientRectangle);
+		}
+
 		private void imagePage_Paint(object sender, PaintEventArgs e)
 		{
 			this.UpdateBitmaps();
@@ -864,6 +908,16 @@ namespace SupRip
 		private void dbgSpace_CheckedChanged(object sender, EventArgs e)
 		{
 			UpdateBitmaps();
+		}
+
+		private void mainTabControl_Selected(object sender, TabControlEventArgs e)
+		{
+			if (e.TabPage == imagePage)
+				UpdateThumbnailClip(subtitlePictureBox.Image);
+			else if (e.TabPage == srtPage)
+				UpdateThumbnailClip(srtTextBox);
+			else
+				UpdateThumbnailClip();
 		}
 	}
 }

@@ -90,6 +90,15 @@
     <Compile Include="SupRip\SupData.cs" />
     <Compile Include="SupRip\SUPFileFormatException.cs" />
     <Compile Include="SupRip\UnknownCharacterException.cs" />
+    <Compile Include="Windows7\Interop\COMTypes.cs" />
+    <Compile Include="Windows7\Interop\IIDGuid.cs" />
+    <Compile Include="Windows7\Interop\Interop.cs" />
+    <Compile Include="Windows7\JumpLists\JumpListImpl.cs" />
+    <Compile Include="Windows7\JumpLists\JumpListManager.cs" />
+    <Compile Include="Windows7\ThumbnailButtons\ThumbButton.cs" />
+    <Compile Include="Windows7\ThumbnailButtons\ThumbButtonManager.cs" />
+    <Compile Include="Windows7\UI\WindowsFormsExtensions.cs" />
+    <Compile Include="Windows7\Windows7Taskbar.cs" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="Properties\Resources.resx">
@@ -99,10 +108,19 @@
     <EmbeddedResource Include="SupRip\ErrorForm.resx">
       <DependentUpon>ErrorForm.cs</DependentUpon>
     </EmbeddedResource>
+    <EmbeddedResource Include="SupRip\ErrorForm.ru.resx">
+      <DependentUpon>ErrorForm.cs</DependentUpon>
+    </EmbeddedResource>
     <EmbeddedResource Include="SupRip\MainForm.resx">
       <DependentUpon>MainForm.cs</DependentUpon>
     </EmbeddedResource>
+    <EmbeddedResource Include="SupRip\MainForm.ru.resx">
+      <DependentUpon>MainForm.cs</DependentUpon>
+    </EmbeddedResource>
     <EmbeddedResource Include="SupRip\ProgressForm.resx">
+      <DependentUpon>ProgressForm.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="SupRip\ProgressForm.ru.resx">
       <DependentUpon>ProgressForm.cs</DependentUpon>
     </EmbeddedResource>
   </ItemGroup>

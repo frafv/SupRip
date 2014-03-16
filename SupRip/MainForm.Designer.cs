@@ -430,6 +430,7 @@
 			this.mainTabControl.Controls.Add(this.fontPage);
 			this.mainTabControl.Name = "mainTabControl";
 			this.mainTabControl.SelectedIndex = 0;
+			this.mainTabControl.Selected += new System.Windows.Forms.TabControlEventHandler(this.mainTabControl_Selected);
 			this.mainTabControl.Click += new System.EventHandler(this.mainTabControl_Click);
 			// 
 			// fontPage

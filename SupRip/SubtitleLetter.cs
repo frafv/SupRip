@@ -412,7 +412,7 @@ namespace SupRip
 		public SubtitleLetter(byte[,] i, string s = null)
 		{
 			this.regular = i;
-			this.widenImage = new Lazy<byte[,]>(() => Widen(this.regular));
+			this.widenImage = new Lazy<byte[,]>(() => Widen1(this.regular));
 			this.Text = s;
 			this.ExactAngle = Double.NaN;
 			this.hash = new Lazy<ulong>(() => HashManager.Hash(this.regular, 0.0, 0.0));
@@ -747,19 +747,45 @@ namespace SupRip
 			return array;
 		}
 
-		internal static byte[,] Widen2(byte[,] image, int levelX, int levelY)
+		internal static byte[,] Widen1(byte[,] image)
 		{
 			int imageW = image.GetLength(1);
 			int imageH = image.GetLength(0);
-			int boldW = imageW + levelX * 2;
-			int boldH = imageH + levelY * 2;
+			int boldW = imageW;// + 2;
+			int boldH = imageH;// + 2;
 			var bold = new byte[boldH, boldW];
 			ParallelEnumerable.Range(0, boldH).ForAll(i =>
 			{
 				for (int x = 0; x < imageW; x++)
 				{
 					byte maxPix = 0;
-					for (int y = Math.Max(0, i - levelY * 2); y <= Math.Min(imageH - 1, i); y++)
+					byte p;
+					if (i > 0 && (p = image[i - 1, x]) > maxPix) maxPix = p;
+					if ((p = image[i, x]) > maxPix) maxPix = p;
+					if (i < imageH - 1 && (p = image[i + 1, x]) > maxPix) maxPix = p;
+					if (maxPix == 0) continue;
+					maxPix = (byte)Math.Min(255, maxPix * 2);
+					if (x > 0 && (p = bold[i, x - 1]) < maxPix) bold[i, x - 1] = maxPix;
+					if ((p = bold[i, x]) < maxPix) bold[i, x] = maxPix;
+					if (x < boldW - 1 && (p = bold[i, x + 1]) < maxPix) bold[i, x + 1] = maxPix;
+				}
+			});
+			return bold;
+		}
+
+		internal static byte[,] Widen2(byte[,] image, int levelX, int levelY)
+		{
+			int imageW = image.GetLength(1);
+			int imageH = image.GetLength(0);
+			int boldW = imageW;// +levelX * 2;
+			int boldH = imageH;// +levelY * 2;
+			var bold = new byte[boldH, boldW];
+			ParallelEnumerable.Range(0, boldH).ForAll(i =>
+			{
+				for (int x = 0; x < imageW; x++)
+				{
+					byte maxPix = 0;
+					for (int y = Math.Max(0, i - levelY); y <= Math.Min(imageH - 1, i + levelY); y++)
 					{
 						byte p = image[y, x];
 						if (p >= SubtitleImage.pixelLimitAsSet && p > maxPix)
@@ -767,7 +793,8 @@ namespace SupRip
 					}
 					if (maxPix == 0)
 						continue;
-					for (int j = Math.Max(0, x); j <= Math.Min(boldW - 1, x + levelX * 2); j++)
+					maxPix = (byte)Math.Min(255, maxPix * 2);
+					for (int j = Math.Max(0, x - levelX); j <= Math.Min(boldW - 1, x + levelX); j++)
 						bold[i, j] = Math.Max(bold[i, j], maxPix);
 				}
 			});
@@ -777,7 +804,7 @@ namespace SupRip
 		private int Difference(byte[,] a, byte[,] b, byte[,] bWiden)
 		{
 			DateTime now = DateTime.Now;
-			byte[,] array = bWiden ?? Widen(b);
+			byte[,] array = bWiden ?? Widen1(b);
 			Debugger.widenTime += (DateTime.Now - now).TotalMilliseconds;
 			int height = Math.Min(a.GetLength(1), array.GetLength(1));
 			int width = Math.Min(a.GetLength(0), array.GetLength(0));
@@ -792,9 +819,10 @@ namespace SupRip
 			return diff;
 		}
 
-		public int Matches(SubtitleLetter o)
+		public int Matches(SubtitleLetter o, int tolerance = 5000)
 		{
-			if (Math.Abs(o.image.GetLength(1) - this.image.GetLength(1)) > 1 || Math.Abs(o.image.GetLength(0) - this.image.GetLength(0)) > 1)
+			int delta = (this.image.GetLength(1) >> 4) + 1;
+			if (Math.Abs(o.image.GetLength(1) - this.image.GetLength(1)) > delta || Math.Abs(o.image.GetLength(0) - this.image.GetLength(0)) > 1)
 			{
 				return 999999;
 			}
@@ -803,7 +831,12 @@ namespace SupRip
 			byte[,] array = o.MoveLetter(-num);
 			Debugger.translationTime += (DateTime.Now - now).TotalMilliseconds;
 			now = DateTime.Now;
-			int num2 = this.Difference(this.image, array, null) + this.Difference(array, this.image, this.widenImage.Value);
+			int num2 = this.Difference(array, this.image, this.widenImage.Value);
+			if (tolerance <= 1000 && num2 > 0)
+			{
+				return num2 + 1000;
+			}
+			num2 += this.Difference(this.image, array, null);
 			Debugger.diffTime += (DateTime.Now - now).TotalMilliseconds;
 			if (num2 > 0)
 			{
@@ -893,7 +926,7 @@ namespace SupRip
 			{
 				return null;
 			}
-			var bold = this.image;//SubtitleImage.MakeBold(this.image, 3, 3);
+			var bold = this.image;//SubtitleLetter.Widen2(this.image, 2, 2);
 			int width = bold.GetLength(1);
 			int height = bold.GetLength(0);
 			Bitmap bitmap = new Bitmap(width + 4, height + 4, PixelFormat.Format32bppArgb);
